@@ -25,7 +25,7 @@ $(TARGET): $(OBJECTS)
 	$(CC) -shared -fPIC $(LDFLAGS) $(OBJECTS) -o $@
 
 .c.o:
-	$(CC) -c $(CFLAGS) $< -o $@
+	$(CC) -std=gnu99 -fPIC -c $(CFLAGS) $< -o $@
 
 clean:
 	rm -f *.o *.so *.dylib *.a example 

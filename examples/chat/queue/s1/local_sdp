@@ -1,0 +1,13 @@
+v=0
+o=- 7203800477532890 2 IN IP4 127.0.0.1
+s=-
+t=0 0
+a=msid-semantic: WMS
+m=application 1 DTLS/SCTP 35051
+c=IN IP4 0.0.0.0
+a=ice-ufrag:KXKY
+a=ice-pwd:Fe0qrWgra/UC0eqdicYrwb
+a=fingerprint:sha-256 BD:BE:13:0D:F8:C6:09:6D:52:1E:60:93:30:06:D0:30:1E:98:8B:30:A4:C1:AD:1D:19:8D:01:2A:0A:3E:36:58
+a=setup:passive
+a=mid:data
+a=sctpmap:35051 webrtc-datachannel 1024

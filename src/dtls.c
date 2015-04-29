@@ -2,6 +2,7 @@
 // Copyright (c) 2015 Xiaohan Song <chef@dark.kitchen>
 // This file is licensed under a BSD license.
 
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <openssl/bio.h>

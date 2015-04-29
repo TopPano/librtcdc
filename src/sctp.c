@@ -258,7 +258,7 @@ send_sctp_message(struct sctp_transport *sctp,
     return -1;
 
   if (sctp->handshake_done) {
-    struct sctp_message *m;
+ /*   struct sctp_message *m;
     while ((m = (struct sctp_message *)g_async_queue_try_pop(sctp->deferred_messages))) {
       struct sctp_sndinfo info;
       memset(&info, 0, sizeof info);
@@ -273,7 +273,7 @@ send_sctp_message(struct sctp_transport *sctp,
       }
       free(m);
     }
-
+*/
     struct sctp_sndinfo info;
     memset(&info, 0, sizeof info);
     info.snd_sid = sid;
@@ -287,7 +287,7 @@ send_sctp_message(struct sctp_transport *sctp,
       return -1;
     }
   }
-
+/*
   struct sctp_message *msg = (struct sctp_message *)calloc(1, sizeof *msg);
   if (msg == NULL)
     return -1;
@@ -297,6 +297,6 @@ send_sctp_message(struct sctp_transport *sctp,
   msg->sid = sid;
   msg->ppid = ppid;
   g_async_queue_push(sctp->deferred_messages, msg);
-
+*/
   return 0;
 }
