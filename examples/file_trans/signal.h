@@ -4,8 +4,11 @@
 
 
 struct peer_info{
-    char* local_name;
-    char* remote_name;
+    struct rtcdc_peer_connection* rtcdc_peer;
+    char* local_peer;
+    char* remote_peer;
+    char* local_file_path;
+    char* remote_file_path;
 };
 
 

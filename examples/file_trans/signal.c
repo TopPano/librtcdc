@@ -19,7 +19,7 @@ void signal_gen_local_SDP_file(struct rtcdc_peer_connection* peer, struct peer_i
     local_sdp  = rtcdc_generate_offer_sdp(peer);
     //=====================start signaling====================================
     FILE *f_local_sdp;
-    char *abs_file_path = signal_get_SDP_filename(peer_sample->local_name, "/sdp");
+    char *abs_file_path = signal_get_SDP_filename(peer_sample->local_peer, "/sdp");
 
     f_local_sdp = fopen(abs_file_path, "w");
     if(f_local_sdp == NULL){
@@ -39,7 +39,7 @@ void signal_get_remote_SDP_file(struct rtcdc_peer_connection* peer, struct peer_
 
     //=====================start signaling====================================
     FILE *f_remote_sdp;
-    char *abs_file_path = signal_get_SDP_filename(peer_sample->remote_name, "/sdp");
+    char *abs_file_path = signal_get_SDP_filename(peer_sample->remote_peer, "/sdp");
     f_remote_sdp = fopen(abs_file_path, "r");
     if(f_remote_sdp == NULL){
         fprintf(stderr, "Error while opening the file.\n");
@@ -89,7 +89,7 @@ void signal_get_remote_candidate_file(struct rtcdc_peer_connection* peer, struct
 
     //=====================start signaling====================================
     FILE *f_remote_candidate;
-    char *abs_file_path = signal_get_SDP_filename(peer_sample->remote_name, "/candidates");
+    char *abs_file_path = signal_get_SDP_filename(peer_sample->remote_peer, "/candidates");
     f_remote_candidate = fopen(abs_file_path, "r");
     if(f_remote_candidate ==NULL){
         fprintf(stderr, "Error while opening the file.\n");

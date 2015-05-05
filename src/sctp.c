@@ -279,6 +279,7 @@ send_sctp_message(struct sctp_transport *sctp,
     info.snd_sid = sid;
     info.snd_flags = SCTP_EOR;
     info.snd_ppid = htonl(ppid);
+    printf("send msg\n");
     if (usrsctp_sendv(sctp->sock, data, len, NULL, 0,
                       &info, sizeof info, SCTP_SENDV_SNDINFO, 0) < 0) {
 #ifdef DEBUG_SCTP
