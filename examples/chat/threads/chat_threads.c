@@ -38,9 +38,10 @@ void on_open(){
 }
 
 void on_message(rtcdc_data_channel* dc, int datatype, void* data, size_t len, void* user_data){
-    char *msg = (char*)calloc(1, len*sizeof(char));
-    strncpy(msg, (char*)data,len); 
-    printf("len:%d, msg:%s\n", len, msg);   
+    //char *msg = (char*)calloc(1, len*sizeof(char));
+    //strncpy(msg, (char*)data,len); 
+    //printf("len:%d, msg:%s\n", len, msg);   
+    printf("done\n\n\n");
 }
 
 void on_close(){
@@ -57,7 +58,7 @@ void on_candidate(rtcdc_peer_connection *peer, char *candidate, void *user_data 
     
     FILE *f_local_candidate;
     char *abs_file_path = calloc(1,256);
-    strcat(abs_file_path, "/home/uniray/Project/librtcdc/examples/chat/threads/");
+    strcat(abs_file_path, "/home/uniray/Project/WebRTC/librtc_thread/");
     strcat(abs_file_path, peer_sample->local_name);
     strcat(abs_file_path, "/local_candidates");
     f_local_candidate = fopen(abs_file_path, "a");
@@ -105,7 +106,7 @@ void gen_local_SDP_file(rtcdc_peer_connection* peer, char* file_path)
     char *local_sdp;
     FILE *f_local_sdp;
     char *abs_file_path = calloc(1,256);
-    strcat(abs_file_path, "/home/uniray/Project/librtcdc/examples/chat/threads/");
+    strcat(abs_file_path, "/home/uniray/Project/WebRTC/librtc_thread/");
     strcat(abs_file_path, file_path);
     strcat(abs_file_path, "/local_sdp");
     f_local_sdp = fopen(abs_file_path, "w");
@@ -124,7 +125,7 @@ void gen_local_SDP_file(rtcdc_peer_connection* peer, char* file_path)
 void get_remote_SDP_file(rtcdc_peer_connection* peer, char* file_path){
     FILE *f_remote_sdp;
     char *abs_file_path = calloc(1,256);
-    strcat(abs_file_path, "/home/uniray/Project/librtcdc/examples/chat/threads/");
+    strcat(abs_file_path, "/home/uniray/Project/WebRTC/librtc_thread/");
     strcat(abs_file_path, file_path);
     strcat(abs_file_path, "/local_sdp");
     f_remote_sdp = fopen(abs_file_path, "r");
@@ -154,7 +155,7 @@ void get_remote_SDP_file(rtcdc_peer_connection* peer, char* file_path){
 void get_remote_candidate_file(rtcdc_peer_connection* peer, char* file_path){
     FILE *f_remote_candidate;
     char *abs_file_path = calloc(1,256);
-    strcat(abs_file_path, "/home/uniray/Project/librtcdc/examples/chat/threads/");
+    strcat(abs_file_path, "/home/uniray/Project/WebRTC/librtc_thread/");
     strcat(abs_file_path, file_path);
     strcat(abs_file_path, "/local_candidates");
 f_remote_candidate = fopen(abs_file_path, "r");
@@ -177,7 +178,7 @@ f_remote_candidate = fopen(abs_file_path, "r");
     printf("success parse remote candidates!\n");
     fclose(f_remote_candidate);
 }
-
+/*
 
 void alloc_buffer(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
         *buf = uv_buf_init((char*) malloc(suggested_size), suggested_size);
@@ -193,7 +194,7 @@ void read_stdin(uv_stream_t *stream, ssize_t nread, const uv_buf_t *stdin_buf){
     memset((stdin_buf->base),'\0', 100);
     free(stdin_buf->base);
 }
-
+*/
 
 void sync_loop(void *peer){
     rtcdc_peer_connection* offerer = (rtcdc_peer_connection*)peer;
@@ -207,12 +208,25 @@ void send_msg(void *peer){
     rtcdc_peer_connection* offerer = (rtcdc_peer_connection*)peer;
     offerer_dc = rtcdc_create_data_channel(offerer, "Demo Channel", "", on_open, on_message, NULL, NULL); 
 
+    char msg[1500] = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    
+    static int count = 0;
+    while(1){
+        printf("%d\n", count);
+        count++;
+        rtcdc_send_message(offerer_dc, RTCDC_DATATYPE_STRING, (void *)msg, 1100);
+        usleep(10000);
+        //printf("%s\n", msg);
+        //memset(msg, '\0', 2048);
+    }
+    /*
     uv_loop_t *send_loop = uv_default_loop();
     uv_pipe_t stdin_pipe;
     uv_pipe_init(send_loop, &stdin_pipe, 0);
     uv_pipe_open(&stdin_pipe, 0);
     uv_read_start((uv_stream_t*)&stdin_pipe, alloc_buffer, read_stdin);
     uv_run(send_loop, UV_RUN_DEFAULT);
+*/
 }
 
 
@@ -230,7 +244,7 @@ int main(int argc, char *argv[]){
     // clear the content of local_candidate file
     FILE *f_local_candidate;
     char *abs_file_path = calloc(1,256);
-    strcat(abs_file_path, "/home/uniray/Project/librtcdc/examples/chat/threads/");
+    strcat(abs_file_path, "/home/uniray/Project/WebRTC/librtc_thread/");
     strcat(abs_file_path, argv[1]);
     strcat(abs_file_path, "/local_candidates");
     f_local_candidate = fopen(abs_file_path, "w");
@@ -254,7 +268,7 @@ int main(int argc, char *argv[]){
 
     // on_candidate will be called if create peer connection successfully
     // on_candidate store the candidate in the local_candidate file
-    rtcdc_peer_connection* offerer = rtcdc_create_peer_connection(on_channel, on_candidate, on_connect, "stun.services.mozilla.com", NULL, (void*)peer_sample);
+    rtcdc_peer_connection* offerer = rtcdc_create_peer_connection((void*)on_channel, (void*)on_candidate, (void*)on_connect, "stun.services.mozilla.com", NULL, (void*)peer_sample);
     
     // generate local SDP and store in the file
     gen_local_SDP_file(offerer, argv[1]);

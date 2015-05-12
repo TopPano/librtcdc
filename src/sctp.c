@@ -36,7 +36,7 @@ static int
 sctp_data_received_cb(struct socket *sock, union sctp_sockstore addr, void *data,
                       size_t len, struct sctp_rcvinfo recv_info, int flags, void *user_data)
 {
-  if (user_data == NULL || len == 0)
+    if (user_data == NULL || len == 0)
     return -1;
 
   struct rtcdc_peer_connection *peer = (struct rtcdc_peer_connection *)user_data;
@@ -279,7 +279,6 @@ send_sctp_message(struct sctp_transport *sctp,
     info.snd_sid = sid;
     info.snd_flags = SCTP_EOR;
     info.snd_ppid = htonl(ppid);
-    printf("send msg\n");
     if (usrsctp_sendv(sctp->sock, data, len, NULL, 0,
                       &info, sizeof info, SCTP_SENDV_SNDINFO, 0) < 0) {
 #ifdef DEBUG_SCTP
@@ -287,6 +286,7 @@ send_sctp_message(struct sctp_transport *sctp,
 #endif
       return -1;
     }
+    else{printf("success send\n");}
   }
 /*
   struct sctp_message *msg = (struct sctp_message *)calloc(1, sizeof *msg);
