@@ -360,7 +360,7 @@ startup_thread(gpointer user_data)
   struct sctp_transport *sctp = transport->sctp;
 
   while (!peer->exit_thread && !ice->negotiation_done)
-    g_usleep(2500);
+    g_usleep(100);
   if (peer->exit_thread)
     return NULL;
 
@@ -375,7 +375,7 @@ startup_thread(gpointer user_data)
   SSL_do_handshake(dtls->ssl);
 
   while (!peer->exit_thread && !dtls->handshake_done)
-    g_usleep(2500);
+    g_usleep(100);
   if (peer->exit_thread)
     return NULL;
 

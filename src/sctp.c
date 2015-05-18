@@ -75,7 +75,7 @@ create_sctp_transport(struct rtcdc_peer_connection *peer)
 
   if (g_sctp_ref == 0) {
     usrsctp_init(0, sctp_data_ready_cb, NULL);
-    usrsctp_sysctl_set_sctp_ecn_enable(0);
+    usrsctp_sysctl_set_sctp_ecn_enable(1);
   }
   g_sctp_ref++;
 
@@ -98,6 +98,7 @@ create_sctp_transport(struct rtcdc_peer_connection *peer)
   BIO_set_mem_eof_return(bio, -1);
   sctp->outgoing_bio = bio;
 
+  
 #ifdef DEBUG_SCTP
   int sd;
   struct sockaddr_in stub_addr;
@@ -279,14 +280,21 @@ send_sctp_message(struct sctp_transport *sctp,
     info.snd_sid = sid;
     info.snd_flags = SCTP_EOR;
     info.snd_ppid = htonl(ppid);
-    if (usrsctp_sendv(sctp->sock, data, len, NULL, 0,
-                      &info, sizeof info, SCTP_SENDV_SNDINFO, 0) < 0) {
+  int err= usrsctp_sendv(sctp->sock, data, len, NULL, 0,
+                      &info, sizeof info, SCTP_SENDV_SNDINFO, 0); 
+    if (err  < 0) {
 #ifdef DEBUG_SCTP
-      fprintf(stderr, "sending SCTP message failed\n");
+      fprintf(stderr, "sending SCTP message failed%d\n",err);
+      exit(1);
 #endif
       return -1;
     }
-    else{printf("success send\n");}
+    else{ 
+    
+    printf("sendfile\n");
+    }
+  
+  
   }
 /*
   struct sctp_message *msg = (struct sctp_message *)calloc(1, sizeof *msg);

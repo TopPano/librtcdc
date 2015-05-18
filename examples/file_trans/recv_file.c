@@ -30,24 +30,35 @@ void on_open(){
 }
 
 void on_message(rtcdc_data_channel* dc, int datatype, void* data, size_t len, void* user_data){
-    sctp_packet* packet_instance = (sctp_packet*)data;
+    char *msg = (char*)calloc(1, (len)*sizeof(char));
+    strncpy(msg, (char*)data, len); 
+    //printf("%s\n", msg);
 
-    char *msg = (char*)calloc(1, (packet_instance->data_len)*sizeof(char));
-    strncpy(msg, (char*)packet_instance->data, packet_instance->data_len); 
+    FILE* recv_file;
+    recv_file = fopen("hihihi", "ab");
+    fwrite(msg, sizeof(char), len, recv_file);
+    fclose(recv_file);
 
-    int index = packet_instance->index;
-    printf("index:%d\n", index);
-    static FILE* recved_file;
-    if(index == 0){
-        recved_file = fopen(msg, "w");
-    }else if(index>0){
-        fwrite(msg, sizeof(char), packet_instance->data_len, recved_file);
-    }else if(index == -1){
-        fwrite(msg, sizeof(char), packet_instance->data_len, recved_file);
-        fclose(recved_file);
-        printf("Finish receiving\n");
-    }
 
+    /*
+       sctp_packet* packet_instance = (sctp_packet*)data;
+
+       char *msg = (char*)calloc(1, (packet_instance->data_len)*sizeof(char));
+       strncpy(msg, (char*)packet_instance->data, packet_instance->data_len); 
+
+       int index = packet_instance->index;
+       printf("index:%d\n", index);
+       static FILE* recved_file;
+       if(index == 0){
+       recved_file = fopen(msg, "w");
+       }else if(index>0){
+       fwrite(msg, sizeof(char), packet_instance->data_len, recved_file);
+       }else if(index == -1){
+       fwrite(msg, sizeof(char), packet_instance->data_len, recved_file);
+       fclose(recved_file);
+       printf("Finish receiving\n");
+       }
+       */
 }
 
 void on_close(){

@@ -1,0 +1,178 @@
+!_TAG_FILE_FORMAT	2	/extended format; --format=1 will not append ;" to lines/
+!_TAG_FILE_SORTED	1	/0=unsorted, 1=sorted, 2=foldcase/
+!_TAG_PROGRAM_AUTHOR	Darren Hiebert	/dhiebert@users.sourceforge.net/
+!_TAG_PROGRAM_NAME	Exuberant Ctags	//
+!_TAG_PROGRAM_URL	http://ctags.sourceforge.net	/official site/
+!_TAG_PROGRAM_VERSION	5.8	//
+BUFFER_SIZE	common.h	12;"	d
+DATA_CHANNEL_ACK	dcep.h	23;"	d
+DATA_CHANNEL_OPEN	dcep.h	22;"	d
+DATA_CHANNEL_PARTIAL_RELIABLE_REXMIT	dcep.h	27;"	d
+DATA_CHANNEL_PARTIAL_RELIABLE_REXMIT_UNORDERED	dcep.h	28;"	d
+DATA_CHANNEL_PARTIAL_RELIABLE_TIMED	dcep.h	29;"	d
+DATA_CHANNEL_PARTIAL_RELIABLE_TIMED_UNORDERED	dcep.h	30;"	d
+DATA_CHANNEL_PRIORITY_BELOW_NORMAL	dcep.h	32;"	d
+DATA_CHANNEL_PRIORITY_EXTRA_HIGH	dcep.h	35;"	d
+DATA_CHANNEL_PRIORITY_HIGH	dcep.h	34;"	d
+DATA_CHANNEL_PRIORITY_NORMAL	dcep.h	33;"	d
+DATA_CHANNEL_RELIABLE	dcep.h	25;"	d
+DATA_CHANNEL_RELIABLE_UNORDERED	dcep.h	26;"	d
+RTCDC_CHANNEL_STATE_CLOSED	rtcdc.h	28;"	d
+RTCDC_CHANNEL_STATE_CONNECTED	rtcdc.h	30;"	d
+RTCDC_CHANNEL_STATE_CONNECTING	rtcdc.h	29;"	d
+RTCDC_DATATYPE_BINARY	rtcdc.h	33;"	d
+RTCDC_DATATYPE_EMPTY	rtcdc.h	34;"	d
+RTCDC_DATATYPE_STRING	rtcdc.h	32;"	d
+RTCDC_MAX_CHANNEL_NUM	rtcdc.h	13;"	d
+RTCDC_MAX_IN_STREAM	rtcdc.h	17;"	d
+RTCDC_MAX_OUT_STREAM	rtcdc.h	21;"	d
+RTCDC_PEER_ROLE_CLIENT	rtcdc.h	25;"	d
+RTCDC_PEER_ROLE_SERVER	rtcdc.h	26;"	d
+RTCDC_PEER_ROLE_UNKNOWN	rtcdc.h	24;"	d
+SESSION_ID_SIZE	common.h	13;"	d
+SHA256_FINGERPRINT_SIZE	dtls.h	16;"	d
+WEBRTC_BINARY_EMPTY_PPID	dcep.h	20;"	d
+WEBRTC_BINARY_PARTIAL_PPID	dcep.h	16;"	d
+WEBRTC_BINARY_PPID	dcep.h	17;"	d
+WEBRTC_CONTROL_PPID	dcep.h	14;"	d
+WEBRTC_STRING_EMPTY_PPID	dcep.h	19;"	d
+WEBRTC_STRING_PARTIAL_PPID	dcep.h	18;"	d
+WEBRTC_STRING_PPID	dcep.h	15;"	d
+_RTCDC_COMMON_H_	common.h	6;"	d
+_RTCDC_DCEP_H_	dcep.h	6;"	d
+_RTCDC_DTLS_H_	dtls.h	6;"	d
+_RTCDC_H_	rtcdc.h	6;"	d
+_RTCDC_ICE_H_	ice.h	6;"	d
+_RTCDC_SCTP_H_	sctp.h	6;"	d
+_RTCDC_SDP_H_	sdp.h	6;"	d
+_RTCDC_UTIL_H_	util.h	6;"	d
+agent	ice.h	/^  NiceAgent *agent;$/;"	m	struct:ice_transport
+allocate_new_data_channel	dcep.c	/^allocate_new_data_channel(struct dcep_open_message *open_req, uint16_t sid)$/;"	f	file:
+candidate_gathering_done_cb	ice.c	/^candidate_gathering_done_cb(NiceAgent *agent, guint stream_id, gpointer user_data)$/;"	f	file:
+channel_type	dcep.h	/^  uint8_t channel_type;$/;"	m	struct:dcep_open_message
+channels	rtcdc.h	/^  struct rtcdc_data_channel *channels[RTCDC_MAX_CHANNEL_NUM];$/;"	m	struct:rtcdc_peer_connection	typeref:struct:rtcdc_peer_connection::rtcdc_data_channel
+component_state_changed_cb	ice.c	/^component_state_changed_cb(NiceAgent *agent, guint stream_id, $/;"	f	file:
+create_dtls_context	dtls.c	/^create_dtls_context(const char *common)$/;"	f
+create_dtls_transport	dtls.c	/^create_dtls_transport(struct rtcdc_peer_connection *peer,$/;"	f
+create_ice_transport	ice.c	/^create_ice_transport(struct rtcdc_peer_connection *peer,$/;"	f
+create_rtcdc_transport	rtcdc.c	/^create_rtcdc_transport(struct rtcdc_peer_connection *peer, int role)$/;"	f	file:
+create_sctp_transport	sctp.c	/^create_sctp_transport(struct rtcdc_peer_connection *peer)$/;"	f
+ctx	dtls.h	/^  SSL_CTX *ctx;$/;"	m	struct:dtls_context
+ctx	rtcdc.h	/^  struct dtls_context *ctx;$/;"	m	struct:rtcdc_transport	typeref:struct:rtcdc_transport::dtls_context
+data	sctp.h	/^  void *data;$/;"	m	struct:sctp_message
+data_received_cb	ice.c	/^data_received_cb(NiceAgent *agent, guint stream_id, guint component_id,$/;"	f	file:
+dcep_ack_message	dcep.h	/^struct dcep_ack_message {$/;"	s
+dcep_open_message	dcep.h	/^struct dcep_open_message {$/;"	s
+deferred_messages	sctp.h	/^  GAsyncQueue *deferred_messages;$/;"	m	struct:sctp_transport
+destroy_dtls_context	dtls.c	/^destroy_dtls_context(struct dtls_context *context)$/;"	f
+destroy_dtls_transport	dtls.c	/^destroy_dtls_transport(struct dtls_transport *dtls)$/;"	f
+destroy_ice_transport	ice.c	/^destroy_ice_transport(struct ice_transport *ice)$/;"	f
+destroy_rtcdc_transport	rtcdc.c	/^destroy_rtcdc_transport(struct rtcdc_transport *transport)$/;"	f	file:
+destroy_sctp_transport	sctp.c	/^destroy_sctp_transport(struct sctp_transport *sctp)$/;"	f
+dtls	rtcdc.h	/^  struct dtls_transport *dtls;$/;"	m	struct:rtcdc_transport	typeref:struct:rtcdc_transport::dtls_transport
+dtls_context	dtls.h	/^struct dtls_context {$/;"	s
+dtls_mutex	dtls.h	/^  GMutex dtls_mutex;$/;"	m	struct:dtls_transport
+dtls_transport	dtls.h	/^struct dtls_transport {$/;"	s
+exit_thread	rtcdc.h	/^  int exit_thread;$/;"	m	struct:rtcdc_peer_connection
+fingerprint	dtls.h	/^  char fingerprint[SHA256_FINGERPRINT_SIZE];$/;"	m	struct:dtls_context
+g_context_ref	rtcdc.c	/^static int g_context_ref = 0;$/;"	v	file:
+g_dtls_context	rtcdc.c	/^static struct dtls_context *g_dtls_context = NULL;$/;"	v	typeref:struct:dtls_context	file:
+g_sctp_ref	sctp.c	/^static int g_sctp_ref = 0;$/;"	v	file:
+gathering_done	ice.h	/^  gboolean gathering_done;$/;"	m	struct:ice_transport
+gen_cert	dtls.c	/^gen_cert(EVP_PKEY* pkey, const char *common, int days) {$/;"	f	file:
+gen_key	dtls.c	/^gen_key()$/;"	f	file:
+generate_local_candidate_sdp	sdp.c	/^generate_local_candidate_sdp(struct rtcdc_transport *transport)$/;"	f
+generate_local_sdp	sdp.c	/^generate_local_sdp(struct rtcdc_transport *transport, int client)$/;"	f
+handle_notification_message	sctp.c	/^handle_notification_message(struct rtcdc_peer_connection *peer, union sctp_notification *notify, size_t len)$/;"	f	file:
+handle_rtcdc_data	dcep.c	/^handle_rtcdc_data(struct rtcdc_peer_connection *peer, uint16_t sid, int type, void *data, size_t len)$/;"	f	file:
+handle_rtcdc_message	dcep.c	/^handle_rtcdc_message(struct rtcdc_peer_connection *peer, void *data, size_t len,$/;"	f
+handle_rtcdc_open_ack	dcep.c	/^handle_rtcdc_open_ack(struct rtcdc_peer_connection *peer, uint16_t sid)$/;"	f	file:
+handle_rtcdc_open_request	dcep.c	/^handle_rtcdc_open_request(struct rtcdc_peer_connection *peer, uint16_t sid, void *data, size_t len)$/;"	f	file:
+handshake_done	dtls.h	/^  gboolean handshake_done;$/;"	m	struct:dtls_transport
+handshake_done	sctp.h	/^  gboolean handshake_done;$/;"	m	struct:sctp_transport
+ice	rtcdc.h	/^  struct ice_transport *ice;$/;"	m	struct:rtcdc_transport	typeref:struct:rtcdc_transport::ice_transport
+ice_thread	ice.c	/^ice_thread(gpointer user_data)$/;"	f
+ice_transport	ice.h	/^struct ice_transport {$/;"	s
+incoming_bio	dtls.h	/^  BIO *incoming_bio;$/;"	m	struct:dtls_transport
+incoming_bio	sctp.h	/^  BIO *incoming_bio;$/;"	m	struct:sctp_transport
+incoming_stub	sctp.h	/^  int incoming_stub;$/;"	m	struct:sctp_transport
+initialized	rtcdc.h	/^  int initialized;$/;"	m	struct:rtcdc_peer_connection
+interested_events	sctp.c	/^static int interested_events[] = {$/;"	v	file:
+label	rtcdc.h	/^  char *label;$/;"	m	struct:rtcdc_data_channel
+label_and_protocol	dcep.h	/^  char label_and_protocol[0];$/;"	m	struct:dcep_open_message
+label_length	dcep.h	/^  uint16_t label_length;$/;"	m	struct:dcep_open_message
+len	sctp.h	/^  size_t len;$/;"	m	struct:sctp_message
+lifetime	rtcdc.h	/^  uint32_t lifetime;$/;"	m	struct:rtcdc_data_channel
+local_port	sctp.h	/^  int local_port;$/;"	m	struct:sctp_transport
+loop	ice.h	/^  GMainLoop *loop;$/;"	m	struct:ice_transport
+message_type	dcep.h	/^  uint8_t message_type;$/;"	m	struct:dcep_ack_message
+message_type	dcep.h	/^  uint8_t message_type;$/;"	m	struct:dcep_open_message
+negotiation_done	ice.h	/^  gboolean negotiation_done;$/;"	m	struct:ice_transport
+new_local_candidate_cb	ice.c	/^new_local_candidate_cb(NiceAgent *agent, NiceCandidate *candidate, gpointer user_data)$/;"	f	file:
+new_selected_pair_cb	ice.c	/^new_selected_pair_cb(NiceAgent *agent, guint stream_id, guint component_id,$/;"	f	file:
+on_candidate	rtcdc.h	/^  rtcdc_on_candidate_cb on_candidate;$/;"	m	struct:rtcdc_peer_connection
+on_channel	rtcdc.h	/^  rtcdc_on_channel_cb on_channel;$/;"	m	struct:rtcdc_peer_connection
+on_close	rtcdc.h	/^  rtcdc_on_close_cb on_close;$/;"	m	struct:rtcdc_data_channel
+on_connect	rtcdc.h	/^  rtcdc_on_connect_cb on_connect;$/;"	m	struct:rtcdc_peer_connection
+on_message	rtcdc.h	/^  rtcdc_on_message_cb on_message;$/;"	m	struct:rtcdc_data_channel
+on_open	rtcdc.h	/^  rtcdc_on_open_cb on_open;$/;"	m	struct:rtcdc_data_channel
+outgoing_bio	dtls.h	/^  BIO *outgoing_bio;$/;"	m	struct:dtls_transport
+outgoing_bio	sctp.h	/^  BIO *outgoing_bio;$/;"	m	struct:sctp_transport
+outgoing_stub	sctp.h	/^  int outgoing_stub;$/;"	m	struct:sctp_transport
+parse_remote_candidate_sdp	sdp.c	/^parse_remote_candidate_sdp(struct ice_transport *ice, const char *candidates)$/;"	f
+parse_remote_sdp	sdp.c	/^parse_remote_sdp(struct ice_transport *ice, const char *rsdp)$/;"	f
+ppid	sctp.h	/^  uint32_t ppid;$/;"	m	struct:sctp_message
+priority	dcep.h	/^  uint16_t priority;$/;"	m	struct:dcep_open_message
+priority	rtcdc.h	/^  uint16_t priority;$/;"	m	struct:rtcdc_data_channel
+protocol	rtcdc.h	/^  char *protocol;$/;"	m	struct:rtcdc_data_channel
+protocol_length	dcep.h	/^  uint16_t protocol_length;$/;"	m	struct:dcep_open_message
+random_integer	util.c	/^random_integer(int min, int max)$/;"	f
+random_number_string	util.c	/^random_number_string(char *dest, int len)$/;"	f
+reliability_param	dcep.h	/^  uint32_t reliability_param;$/;"	m	struct:dcep_open_message
+remote_port	sctp.h	/^  int remote_port;$/;"	m	struct:sctp_transport
+role	rtcdc.h	/^  int role;$/;"	m	struct:rtcdc_peer_connection
+rtcdc_create_data_channel	rtcdc.c	/^rtcdc_create_data_channel(struct rtcdc_peer_connection *peer,$/;"	f
+rtcdc_create_peer_connection	rtcdc.c	/^rtcdc_create_peer_connection(rtcdc_on_channel_cb on_channel,$/;"	f
+rtcdc_data_channel	rtcdc.h	/^struct rtcdc_data_channel {$/;"	s
+rtcdc_destroy_data_channel	rtcdc.c	/^rtcdc_destroy_data_channel(struct rtcdc_data_channel *channel)$/;"	f
+rtcdc_destroy_peer_connection	rtcdc.c	/^rtcdc_destroy_peer_connection(struct rtcdc_peer_connection *peer)$/;"	f
+rtcdc_generate_local_candidate_sdp	rtcdc.c	/^rtcdc_generate_local_candidate_sdp(struct rtcdc_peer_connection *peer)$/;"	f
+rtcdc_generate_offer_sdp	rtcdc.c	/^rtcdc_generate_offer_sdp(struct rtcdc_peer_connection *peer)$/;"	f
+rtcdc_loop	rtcdc.c	/^rtcdc_loop(struct rtcdc_peer_connection *peer)$/;"	f
+rtcdc_on_candidate_cb	rtcdc.h	/^typedef void (*rtcdc_on_candidate_cb)(struct rtcdc_peer_connection *peer,$/;"	t
+rtcdc_on_channel_cb	rtcdc.h	/^typedef void (*rtcdc_on_channel_cb)(struct rtcdc_peer_connection *peer,$/;"	t
+rtcdc_on_close_cb	rtcdc.h	/^typedef void (*rtcdc_on_close_cb)(struct rtcdc_data_channel *channel, void *user_data);$/;"	t
+rtcdc_on_connect_cb	rtcdc.h	/^typedef void (*rtcdc_on_connect_cb)(struct rtcdc_peer_connection *peer, void *user_data);$/;"	t
+rtcdc_on_message_cb	rtcdc.h	/^typedef void (*rtcdc_on_message_cb)(struct rtcdc_data_channel *channel,$/;"	t
+rtcdc_on_open_cb	rtcdc.h	/^typedef void (*rtcdc_on_open_cb)(struct rtcdc_data_channel *channel, void *user_data);$/;"	t
+rtcdc_parse_candidate_sdp	rtcdc.c	/^rtcdc_parse_candidate_sdp(struct rtcdc_peer_connection *peer, const char *candidates)$/;"	f
+rtcdc_parse_offer_sdp	rtcdc.c	/^rtcdc_parse_offer_sdp(struct rtcdc_peer_connection *peer, const char *offer)$/;"	f
+rtcdc_peer_connection	rtcdc.h	/^struct rtcdc_peer_connection {$/;"	s
+rtcdc_send_message	rtcdc.c	/^rtcdc_send_message(struct rtcdc_data_channel *channel, int datatype, void *data, size_t len)$/;"	f
+rtcdc_transport	rtcdc.h	/^struct rtcdc_transport {$/;"	s
+rtx	rtcdc.h	/^  uint32_t rtx;$/;"	m	struct:rtcdc_data_channel
+sctp	rtcdc.h	/^  struct sctp_transport *sctp;$/;"	m	struct:rtcdc_data_channel	typeref:struct:rtcdc_data_channel::sctp_transport
+sctp	rtcdc.h	/^  struct sctp_transport *sctp;$/;"	m	struct:rtcdc_transport	typeref:struct:rtcdc_transport::sctp_transport
+sctp_data_ready_cb	sctp.c	/^sctp_data_ready_cb(void *reg_addr, void *data, size_t len, uint8_t tos, uint8_t set_df)$/;"	f	file:
+sctp_data_received_cb	sctp.c	/^sctp_data_received_cb(struct socket *sock, union sctp_sockstore addr, void *data,$/;"	f	file:
+sctp_message	sctp.h	/^struct sctp_message {$/;"	s
+sctp_mutex	sctp.h	/^  GMutex sctp_mutex;$/;"	m	struct:sctp_transport
+sctp_thread	sctp.c	/^sctp_thread(gpointer user_data)$/;"	f
+sctp_transport	sctp.h	/^struct sctp_transport {$/;"	s
+send_sctp_message	sctp.c	/^send_sctp_message(struct sctp_transport *sctp,$/;"	f
+sid	rtcdc.h	/^  uint16_t sid;$/;"	m	struct:rtcdc_data_channel
+sid	sctp.h	/^  uint16_t sid;$/;"	m	struct:sctp_message
+sock	sctp.h	/^  struct socket *sock;$/;"	m	struct:sctp_transport	typeref:struct:sctp_transport::socket
+ssl	dtls.h	/^  SSL *ssl;$/;"	m	struct:dtls_transport
+startup_thread	rtcdc.c	/^startup_thread(gpointer user_data)$/;"	f	file:
+state	rtcdc.h	/^  int state;$/;"	m	struct:rtcdc_data_channel
+stream_cursor	sctp.h	/^  int stream_cursor;$/;"	m	struct:sctp_transport
+stream_id	ice.h	/^  guint stream_id;$/;"	m	struct:ice_transport
+stun_port	rtcdc.h	/^  uint16_t stun_port;$/;"	m	struct:rtcdc_peer_connection
+stun_server	rtcdc.h	/^  char *stun_server;$/;"	m	struct:rtcdc_peer_connection
+transport	rtcdc.h	/^  struct rtcdc_transport *transport;$/;"	m	struct:rtcdc_peer_connection	typeref:struct:rtcdc_peer_connection::rtcdc_transport
+type	rtcdc.h	/^  uint8_t type;$/;"	m	struct:rtcdc_data_channel
+user_data	rtcdc.h	/^  void *user_data;$/;"	m	struct:rtcdc_data_channel
+user_data	rtcdc.h	/^  void *user_data;$/;"	m	struct:rtcdc_peer_connection
+user_data	sctp.h	/^  void *user_data;$/;"	m	struct:sctp_transport
+verify_peer_certificate_cb	dtls.c	/^verify_peer_certificate_cb(int ok, X509_STORE_CTX *ctx)$/;"	f	file:

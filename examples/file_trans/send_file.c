@@ -26,9 +26,12 @@ static uv_fs_t open_req,read_req;
 
 char *local_file_path, *remote_file_path;
 
+void on_open_file();
 
-void on_open(){
-    fprintf(stderr, "on open!!\n");
+
+void on_open_channel(){
+    fprintf(stderr, "open channel!\n");
+    uv_fs_open(main_loop, &open_req, local_file_path, O_RDONLY, 0, on_open_file);
 }
 
 void on_message(rtcdc_data_channel* dc, int datatype, void* data, size_t len, void* user_data){
@@ -39,22 +42,10 @@ void on_message(rtcdc_data_channel* dc, int datatype, void* data, size_t len, vo
 
     int index = packet_instance->index;
     printf("index:%d\n", index);
-/*
-    static FILE* recved_file;
-    if(index == 0){
-        recved_file = fopen(msg, "w");
-    }else if(index>0){
-        fwrite(msg, sizeof(char), packet_instance->data_len, recved_file);
-    }else if(index == -1){
-        fwrite(msg, sizeof(char), packet_instance->data_len, recved_file);
-        fclose(recved_file);
-        printf("Finish receiving\n");
-    }
-*/
 }
 
-void on_close(){
-    fprintf(stderr, "close!\n");
+void on_close_channel(){
+    fprintf(stderr, "close channel!\n");
 }
 
 void on_channel(rtcdc_peer_connection *peer, rtcdc_data_channel* dc, void* user_data){
@@ -78,15 +69,13 @@ void on_candidate(rtcdc_peer_connection *peer, char *candidate, void *user_data 
     free(abs_file_path);
     fclose(f_local_candidate);  
     //=====================finish signaling====================================
-
-    printf("%s\n", candidate);
+    //printf("%s\n", candidate);
 }
 
 
 void on_connect(){
-    printf("on_connect:success connect!\n");
+    printf("on connect!\n");
 }
-
 
 
 void alloc_buffer(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
@@ -94,23 +83,24 @@ void alloc_buffer(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
 }
 
 
+void on_close_file(uv_fs_t* req){
+    printf("close file\n");
+}
+
+
 void on_read_file(uv_fs_t *req) {
     if (req->result < 0) {
         fprintf(stderr, "Read error: %s\n", uv_strerror(req->result));
     }else if (req->result == 0) {
-
         uv_fs_t close_req;
         // synchronous
-        uv_fs_close(uv_default_loop(), &close_req, open_req.result, NULL);
+        uv_fs_close(uv_default_loop(), &close_req, open_req.result, on_close_file);
     }else if (req->result > 0) {
 
         iov.len = req->result;
-        printf("len: %d\n", iov.len);      
-        
-        FILE* recved_file;
-        recved_file = fopen("hih1i","a");
-        fwrite(iov.base, sizeof(char), iov.len, recved_file);
-        fclose(recved_file);
+        printf("send msg\n"); 
+        rtcdc_send_message(offerer_dc, RTCDC_DATATYPE_STRING, (void *)iov.base, iov.len);
+        usleep(3000);
         /*
         static int packet_index = 0;
         sctp_packet* packet_instance = (sctp_packet*)calloc(1, sizeof(sctp_packet));
@@ -172,6 +162,7 @@ void on_read_file(uv_fs_t *req) {
 
 void on_open_file(uv_fs_t *req){
     if (req->result >= 0){
+        printf("open file\n");
         char* buffer = (char*)calloc(1, BUFFER_SIZE*sizeof(char));
         iov = uv_buf_init(buffer, BUFFER_SIZE);
         int res = uv_fs_read(main_loop, &read_req, req->result, &iov, 1, -1, on_read_file);
@@ -185,13 +176,13 @@ void on_open_file(uv_fs_t *req){
 void trans_file(uv_work_t *work){
     //TODO infinite retry
     sleep(5);
-    printf("try create data channel\n");
+
     rtcdc_peer_connection* offerer = (rtcdc_peer_connection*)work->data;
-    offerer_dc = rtcdc_create_data_channel(offerer, "Demo Channel", "", on_open, on_message, NULL, NULL); 
-
-    uv_fs_open(main_loop, &open_req, local_file_path, O_RDONLY, 0, on_open_file);
+    offerer_dc = rtcdc_create_data_channel(offerer, "Demo Channel", "", on_open_channel, on_message, NULL, NULL); 
+    if(offerer_dc != NULL){
+        //uv_fs_open(main_loop, &open_req, local_file_path, O_RDONLY, 0, on_open_file);
+    }
 }
-
 
 void sync_loop(uv_work_t *work){
     rtcdc_peer_connection* offerer = (rtcdc_peer_connection*)work->data;
