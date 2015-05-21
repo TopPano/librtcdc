@@ -28,6 +28,8 @@ struct dtls_transport {
   BIO *outgoing_bio;
   gboolean handshake_done;
   GMutex dtls_mutex;
+
+  struct rtcdc_peer_connection* peer;
 };
 
 struct dtls_context *

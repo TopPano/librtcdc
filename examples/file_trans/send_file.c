@@ -6,18 +6,17 @@
 #include <string.h>
 #include <uv.h>
 #include <pthread.h>
+#include <time.h>
 
-#define BUFFER_SIZE 1024
+
+
+clock_t start_time1, start_time2, end_time;
 
 typedef struct rtcdc_peer_connection rtcdc_peer_connection;
 typedef struct rtcdc_data_channel rtcdc_data_channel;
 typedef struct peer_info peer_info;
 
-typedef struct sctp_packet{
-    int index;
-    char data[BUFFER_SIZE];
-    int data_len;
-} sctp_packet;
+typedef struct sctp_packet sctp_packet;
 
 struct rtcdc_data_channel *offerer_dc;
 static uv_loop_t *main_loop;
@@ -84,7 +83,11 @@ void alloc_buffer(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
 
 
 void on_close_file(uv_fs_t* req){
+    end_time = clock();
+    clock_t gap_time = start_time2 - start_time1;
+    float total_secs = ((float)((end_time-gap_time)-start_time2)/CLOCKS_PER_SEC);        
     printf("close file\n");
+    printf("total_sec: %f\n", total_secs);
 }
 
 
@@ -98,19 +101,25 @@ void on_read_file(uv_fs_t *req) {
     }else if (req->result > 0) {
 
         iov.len = req->result;
-        printf("send msg\n"); 
-        rtcdc_send_message(offerer_dc, RTCDC_DATATYPE_STRING, (void *)iov.base, iov.len);
-        usleep(3000);
-        /*
+        
         static int packet_index = 0;
         sctp_packet* packet_instance = (sctp_packet*)calloc(1, sizeof(sctp_packet));
+       /* 
+        packet_instance->data_len = iov.len;
+        strcpy(packet_instance->data, iov.base);
+        packet_instance->index = packet_index;
+        rtcdc_send_message(offerer_dc, RTCDC_DATATYPE_STRING, (void *)packet_instance, sizeof(sctp_packet));
+        usleep(5);
 
+        packet_index++;
+        */
         if(packet_index == 0 && iov.len == BUFFER_SIZE)
         {
             //send the first packet which contains destination file path
             packet_instance->index = packet_index;
             strcpy(packet_instance->data, remote_file_path);
-            packet_instance->data_len = 11;
+            packet_instance->data_len = strlen(remote_file_path);
+            printf("data_len:%d\n", (int)strlen(remote_file_path));
             rtcdc_send_message(offerer_dc, RTCDC_DATATYPE_STRING, (void *)packet_instance, sizeof(sctp_packet));
             packet_index++;
 
@@ -124,7 +133,7 @@ void on_read_file(uv_fs_t *req) {
             //send the first packet which contains destination file path
             packet_instance->index = packet_index;
             strcpy(packet_instance->data, remote_file_path);
-            packet_instance->data_len = 11;      
+            packet_instance->data_len = strlen(remote_file_path);      
             rtcdc_send_message(offerer_dc, RTCDC_DATATYPE_STRING, (void *)packet_instance, sizeof(sctp_packet));
             packet_index++;                      
 
@@ -140,7 +149,6 @@ void on_read_file(uv_fs_t *req) {
             strcpy(packet_instance->data,iov.base);
             packet_instance->data_len = iov.len;
             rtcdc_send_message(offerer_dc, RTCDC_DATATYPE_STRING, (void *)packet_instance, sizeof(sctp_packet));
-            usleep(800000);
             packet_index++;
         }else if (packet_index > 0 && iov.len < BUFFER_SIZE){
             //send the last packet
@@ -151,8 +159,7 @@ void on_read_file(uv_fs_t *req) {
 
             printf("Finish sending\n");
         }
-*/
-
+        usleep(5);
         memset(iov.base, '\0', iov.len);
         uv_fs_read(main_loop, req, open_req.result, &iov, 1, -1, on_read_file);
 
@@ -163,6 +170,8 @@ void on_read_file(uv_fs_t *req) {
 void on_open_file(uv_fs_t *req){
     if (req->result >= 0){
         printf("open file\n");
+        start_time1 = clock();
+        start_time2 = clock();
         char* buffer = (char*)calloc(1, BUFFER_SIZE*sizeof(char));
         iov = uv_buf_init(buffer, BUFFER_SIZE);
         int res = uv_fs_read(main_loop, &read_req, req->result, &iov, 1, -1, on_read_file);
@@ -221,7 +230,7 @@ int main(int argc, char *argv[]){
 
     // on_candidate will be called if create peer connection successfully
     // on_candidate store the candidate in the local_candidate file
-    rtcdc_peer_connection* offerer = rtcdc_create_peer_connection((void*)on_channel, (void*)on_candidate, on_connect, "stun.services.mozilla.com", NULL, (void*)peer_sample);
+    rtcdc_peer_connection* offerer = rtcdc_create_peer_connection((void*)on_channel, (void*)on_candidate, on_connect, "stun.services.mozilla.com", 0, (void*)peer_sample);
 
     // generate local SDP and store in the file
     signal_gen_local_SDP_file(offerer, peer_sample);

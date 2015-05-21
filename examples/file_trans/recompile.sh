@@ -3,6 +3,7 @@
 cd /home/uniray/Project/librtcdc/src/
 make clean
 make
+sudo rm /usr/local/lib/librtcdc.so
 sudo cp librtcdc.so /usr/local/lib/
 make clean
 cd /home/uniray/Project/librtcdc/examples/file_trans/

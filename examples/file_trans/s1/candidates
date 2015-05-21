@@ -1,3 +1,0 @@
-a=candidate:7 1 UDP 1677722111 123.51.222.108 58867 typ srflx raddr 192.168.0.69 rport 58867
-a=candidate:8 1 TCP 847249919 123.51.222.108 9 typ srflx raddr 192.168.0.69 rport 9 tcptype active
-a=candidate:9 1 TCP 843055615 123.51.222.108 33217 typ srflx raddr 192.168.0.69 rport 33217 tcptype passive

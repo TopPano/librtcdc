@@ -12,6 +12,7 @@ extern "C" {
 #include <usrsctp.h>
 #include <openssl/bio.h>
 #include <glib.h>
+#include <uv.h>
 
 struct rtcdc_peer_connection;
 
@@ -37,6 +38,8 @@ struct sctp_transport {
 #endif
   int stream_cursor;
   void *user_data;
+
+  struct rtcdc_peer_connection* peer;
 };
 
 struct sctp_transport *
@@ -48,6 +51,12 @@ destroy_sctp_transport(struct sctp_transport *sctp);
 int
 send_sctp_message(struct sctp_transport *sctp,
                   void *data, size_t len, uint16_t sid, uint32_t ppid);
+
+void 
+sctp_to_dtls(struct rtcdc_peer_connection *peer);
+
+void
+dtls_to_ice(struct rtcdc_peer_connection *peer);
 
 gpointer
 sctp_thread(gpointer peer);

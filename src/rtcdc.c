@@ -1,7 +1,6 @@
 // rtcdc.c
 // Copyright (c) 2015 Xiaohan Song <chef@dark.kitchen>
 // This file is licensed under a BSD license.
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -72,6 +71,9 @@ ctx_null_err:
     return -1;
   }
 
+  // modified by uniray
+    peer->rtcdc_q_loop = uv_default_loop();
+  //==========================
   return 0;
 }
 
@@ -450,7 +452,8 @@ rtcdc_loop(struct rtcdc_peer_connection *peer)
     g_usleep(50000);
 
   GThread *thread_ice = g_thread_new("ICE thread", &ice_thread, peer);
-  GThread *thread_sctp = g_thread_new("SCTP thread", &sctp_thread, peer);
+  // delete thread_sctp by uniray7
+  //  GThread *thread_sctp = g_thread_new("SCTP thread", &sctp_thread, peer);
   GThread *thread_startup = g_thread_new("Startup thread", &startup_thread, peer);
 
   struct ice_transport *ice = peer->transport->ice;
@@ -458,10 +461,10 @@ rtcdc_loop(struct rtcdc_peer_connection *peer)
   peer->exit_thread = TRUE;
 
   g_thread_join(thread_ice);
-  g_thread_join(thread_sctp);
+  //g_thread_join(thread_sctp);
   g_thread_join(thread_startup);
 
   g_thread_unref(thread_ice);
-  g_thread_unref(thread_sctp);
+  //g_thread_unref(thread_sctp);
   g_thread_unref(thread_startup);
 }

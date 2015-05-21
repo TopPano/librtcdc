@@ -7,17 +7,12 @@
 #include <uv.h>
 #include <pthread.h>
 
-#define BUFFER_SIZE 1100
 
 typedef struct rtcdc_peer_connection rtcdc_peer_connection;
 typedef struct rtcdc_data_channel rtcdc_data_channel;
 typedef struct peer_info peer_info;
 
-typedef struct sctp_packet{
-    int index;
-    char data[BUFFER_SIZE];
-    int data_len;
-} sctp_packet;
+typedef struct sctp_packet sctp_packet;
 
 struct rtcdc_data_channel *offerer_dc;
 static uv_loop_t* trans_loop, *main_loop;
@@ -30,35 +25,24 @@ void on_open(){
 }
 
 void on_message(rtcdc_data_channel* dc, int datatype, void* data, size_t len, void* user_data){
-    char *msg = (char*)calloc(1, (len)*sizeof(char));
-    strncpy(msg, (char*)data, len); 
-    //printf("%s\n", msg);
 
-    FILE* recv_file;
-    recv_file = fopen("hihihi", "ab");
-    fwrite(msg, sizeof(char), len, recv_file);
-    fclose(recv_file);
+    sctp_packet* packet_instance = (sctp_packet*)data;
 
+    int index = packet_instance->index;
+    int data_len = (packet_instance->data_len);
+    char *msg = (char*)calloc(1, (packet_instance->data_len)*sizeof(char));
+    strncpy(msg, (char*)packet_instance->data, packet_instance->data_len); 
 
-    /*
-       sctp_packet* packet_instance = (sctp_packet*)data;
-
-       char *msg = (char*)calloc(1, (packet_instance->data_len)*sizeof(char));
-       strncpy(msg, (char*)packet_instance->data, packet_instance->data_len); 
-
-       int index = packet_instance->index;
-       printf("index:%d\n", index);
-       static FILE* recved_file;
-       if(index == 0){
-       recved_file = fopen(msg, "w");
-       }else if(index>0){
-       fwrite(msg, sizeof(char), packet_instance->data_len, recved_file);
-       }else if(index == -1){
-       fwrite(msg, sizeof(char), packet_instance->data_len, recved_file);
-       fclose(recved_file);
-       printf("Finish receiving\n");
-       }
-       */
+    static FILE* recved_file;
+    if(index == 0){
+        recved_file = fopen(msg, "w");
+    }else if(index>0){
+        fwrite(msg, sizeof(char), packet_instance->data_len, recved_file);
+    }else if(index == -1){
+        fwrite(msg, sizeof(char), packet_instance->data_len, recved_file);
+        fclose(recved_file);
+        printf("Finish receiving\n");
+    }
 }
 
 void on_close(){
@@ -133,7 +117,7 @@ int main(int argc, char *argv[]){
 
     // on_candidate will be called if create peer connection successfully
     // on_candidate store the candidate in the local_candidate file
-    rtcdc_peer_connection* offerer = rtcdc_create_peer_connection((void*)on_channel, (void*)on_candidate, on_connect, "stun.services.mozilla.com", NULL, (void*)peer_sample);
+    rtcdc_peer_connection* offerer = rtcdc_create_peer_connection((void*)on_channel, (void*)on_candidate, on_connect, "stun.services.mozilla.com", 0, (void*)peer_sample);
 
     // generate local SDP and store in the file
     signal_gen_local_SDP_file(offerer, peer_sample);

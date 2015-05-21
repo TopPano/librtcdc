@@ -1,7 +1,7 @@
 // ice.c
 // Copyright (c) 2015 Xiaohan Song <chef@dark.kitchen>
 // This file is licensed under a BSD license.
-
+#include <uv.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -50,6 +50,44 @@ new_selected_pair_cb(NiceAgent *agent, guint stream_id, guint component_id,
   ice->negotiation_done = TRUE;
 }
 
+void close_loop(uv_work_t *req, int status)
+{
+    struct rtcdc_peer_connection *peer = (struct rtcdc_peer_connection *)req->data;
+    uv_stop(peer->rtcdc_q_loop);
+}
+
+void dtls_to_sctp(uv_work_t *req)
+{
+    struct rtcdc_peer_connection *peer = (struct rtcdc_peer_connection *)req->data;
+    struct rtcdc_transport *transport = peer->transport; 
+    struct ice_transport *ice = transport->ice;
+    struct dtls_transport *dtls = transport->dtls;
+    struct sctp_transport *sctp = transport->sctp;
+    while (!peer->exit_thread && !ice->negotiation_done)
+        g_usleep(500);
+    if (peer->exit_thread)
+        exit(1);
+
+    while (!peer->exit_thread && !dtls->handshake_done)
+        g_usleep(500);
+    if (peer->exit_thread)
+        exit(1);
+
+    char buf[BUFFER_SIZE];
+    if (BIO_ctrl_pending(sctp->incoming_bio) > 0) {
+        g_mutex_lock(&sctp->sctp_mutex);
+        int nbytes = BIO_read(sctp->incoming_bio, buf, sizeof buf);
+        g_mutex_unlock(&sctp->sctp_mutex);
+#ifdef DEBUG_SCTP
+        send(sctp->incoming_stub, buf, nbytes, 0);
+#endif
+        if (nbytes > 0) {
+            usrsctp_conninput(sctp, buf, nbytes, 0);
+        }
+    }
+    
+}
+
 static void
 data_received_cb(NiceAgent *agent, guint stream_id, guint component_id,
   guint len, gchar *buf, gpointer user_data)
@@ -80,6 +118,30 @@ data_received_cb(NiceAgent *agent, guint stream_id, guint component_id,
       g_mutex_lock(&sctp->sctp_mutex);
       BIO_write(sctp->incoming_bio, buf, nbytes);
       g_mutex_unlock(&sctp->sctp_mutex);
+     
+      // modified by uniray7
+      
+      if (BIO_ctrl_pending(sctp->incoming_bio) > 0) {
+        g_mutex_lock(&sctp->sctp_mutex);
+        int nbytes = BIO_read(sctp->incoming_bio, buf, sizeof buf);
+        g_mutex_unlock(&sctp->sctp_mutex);
+#ifdef DEBUG_SCTP
+        send(sctp->incoming_stub, buf, nbytes, 0);
+#endif
+        if (nbytes > 0) {
+            usrsctp_conninput(sctp, buf, nbytes, 0);
+        }
+    }
+    
+/*
+      uv_work_t req;
+      uv_loop_t *rtcdc_q_loop = peer->rtcdc_q_loop;
+      req.data = (void *)peer;
+      uv_queue_work(rtcdc_q_loop, &req, dtls_to_sctp, close_loop);
+      uv_run(rtcdc_q_loop, UV_RUN_DEFAULT);  
+*/
+      // ==============================
+      
     }
   }
 }
@@ -183,16 +245,18 @@ ice_thread(gpointer user_data)
   // need a external thread to start SCTP when DTLS handshake is done
   char buf[BUFFER_SIZE];
   while (!peer->exit_thread) {
+      
     if (BIO_ctrl_pending(dtls->outgoing_bio) > 0) {
+      
       g_mutex_lock(&dtls->dtls_mutex);
       int nbytes = BIO_read(dtls->outgoing_bio, buf, sizeof buf);
       g_mutex_unlock(&dtls->dtls_mutex);
 
       if (nbytes > 0) {
-        nice_agent_send(ice->agent, ice->stream_id, 1, nbytes, buf);
+          nice_agent_send(ice->agent, ice->stream_id, 1, nbytes, buf);
       }
     } else {
-      g_usleep(2500);
+      g_usleep(100);
     }
 
     if (!dtls->handshake_done) {

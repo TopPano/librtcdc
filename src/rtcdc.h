@@ -2,6 +2,8 @@
 // Copyright (c) 2015 Xiaohan Song <chef@dark.kitchen>
 // This file is licensed under a BSD license.
 
+#include <uv.h>
+
 #ifndef _RTCDC_H_
 #define _RTCDC_H_
 
@@ -89,6 +91,7 @@ struct rtcdc_peer_connection {
   rtcdc_on_candidate_cb on_candidate;
   rtcdc_on_connect_cb on_connect;
   void *user_data;
+  uv_loop_t *rtcdc_q_loop;
 };
 
 struct rtcdc_peer_connection *

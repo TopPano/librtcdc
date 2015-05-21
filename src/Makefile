@@ -4,7 +4,7 @@
 
 CC=gcc
 CFLAGS=-g -O2 -DINET -DINET6 -DDEBUG_SCTP -Wno-deprecated `pkg-config --cflags openssl nice`
-LDFLAGS=`pkg-config --libs openssl nice` -lusrsctp -lpthread
+LDFLAGS=`pkg-config --libs openssl nice` -lusrsctp -lpthread -luv
 SOURCES=util.c dtls.c sctp.c ice.c sdp.c dcep.c rtcdc.c
 OBJECTS=$(SOURCES:.c=.o)
 NAME=rtcdc
