@@ -10,6 +10,5 @@ cd /home/uniray/Project/librtcdc/examples/file_trans/
 rm send
 rm recv
 
-gcc -luv -lrtcdc signal.c signal.h send_file.c -o send
-
-gcc -luv -lrtcdc signal.h signal.c recv_file.c -o recv
+gcc -luv -lrtcdc -lpthread -lwebsockets signal.c signal.h send_file.c -o send
+gcc -luv -lrtcdc -lpthread -lwebsockets signal.h signal.c recv_file.c -o recv

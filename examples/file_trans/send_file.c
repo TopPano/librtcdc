@@ -1,4 +1,5 @@
 #include "signal.h"
+#include "common.h"
 #include <stdio.h>
 #include <stdint.h>
 #include <rtcdc.h>
@@ -7,8 +8,6 @@
 #include <uv.h>
 #include <pthread.h>
 #include <time.h>
-
-
 
 clock_t start_time1, start_time2, end_time;
 
@@ -22,10 +21,11 @@ struct rtcdc_data_channel *offerer_dc;
 static uv_loop_t *main_loop;
 static uv_buf_t iov; 
 static uv_fs_t open_req,read_req; 
-
 char *local_file_path, *remote_file_path;
-
+struct conn_info__SDP *signal_conn;
+char *candidate_sets;
 void on_open_file();
+
 
 
 void on_open_channel(){
@@ -53,22 +53,12 @@ void on_channel(rtcdc_peer_connection *peer, rtcdc_data_channel* dc, void* user_
 }
 
 void on_candidate(rtcdc_peer_connection *peer, char *candidate, void *user_data ){
+    char *endl = "\n";
     peer_info* peer_sample = (peer_info*) user_data;
-
-    //=====================start signaling====================================
-
-    FILE *f_local_candidate;
-    char *abs_file_path = signal_get_SDP_filename(peer_sample->local_peer, "/candidates");
-    f_local_candidate = fopen(abs_file_path, "a");
-    if(f_local_candidate == NULL){
-        fprintf(stderr, "Error while opening the file.\n");
-        exit(1);
-    }
-    fprintf(f_local_candidate, "%s\r\n", candidate);
-    free(abs_file_path);
-    fclose(f_local_candidate);  
-    //=====================finish signaling====================================
-    //printf("%s\n", candidate);
+    candidate_sets = strcat(candidate_sets, candidate);
+    candidate_sets = strcat(candidate_sets, endl);
+    // signaling send local candidate
+    signal_send_candidate(signal_conn, peer_sample->local_peer, candidate_sets);
 }
 
 
@@ -214,42 +204,42 @@ int main(int argc, char *argv[]){
     local_file_path = argv[3];
     remote_file_path = argv[4];
 
+    candidate_sets = (char *)calloc(1, DATASIZE*sizeof(char));
+    // initial signaling
+    const char *address = "140.112.90.37";
+    int port = 7681;
+    signal_conn = signal_initial(address, port);
+    struct libwebsocket_context *context = signal_conn->context;
+    pthread_t signal_thread;
+    pthread_create(&signal_thread, NULL, &signal_connect, (void *)context);
 
-    // clear the content of local_candidate file
-    FILE *f_local_candidate;
-    char *abs_file_path = signal_get_SDP_filename(peer_sample->local_peer, "/candidates");
-    f_local_candidate = fopen(abs_file_path, "w");
-    if(f_local_candidate == NULL){
-        fprintf(stderr, "Error while clear the file.\n");
-        exit(1);
-    }
-    fclose(f_local_candidate);  
-
-    // create rtcdc peer
-    // the peer_sample is the local&remote infomation
-
-    // on_candidate will be called if create peer connection successfully
-    // on_candidate store the candidate in the local_candidate file
     rtcdc_peer_connection* offerer = rtcdc_create_peer_connection((void*)on_channel, (void*)on_candidate, on_connect, "stun.services.mozilla.com", 0, (void*)peer_sample);
 
-    // generate local SDP and store in the file
-    signal_gen_local_SDP_file(offerer, peer_sample);
+
+    // signaling send local sdp
+    char *local_sdp = rtcdc_generate_offer_sdp(offerer);
+    signal_send_SDP(signal_conn, argv[1], local_sdp);
 
     printf("ready to connect?(y/n)");
     if(fgetc(stdin)=='y'){
-        signal_get_remote_SDP_file(offerer, peer_sample); 
-
-        // clear the content of local_candidate file
-        f_local_candidate = fopen(abs_file_path, "w");
-        if(f_local_candidate == NULL){
-            fprintf(stderr, "Error while clear the file.\n");
-            exit(1);
+        // signaling get remote sdp
+        // signaling get remote candidate
+        char *remote_sdp, *remote_candidate;
+        struct SDP_context *recvd_SDP_context = signal_req(signal_conn, argv[2]);
+        remote_sdp = recvd_SDP_context->SDP;
+        remote_candidate = recvd_SDP_context->candidate;
+        rtcdc_parse_offer_sdp(offerer, remote_sdp);
+        char *line;
+        
+        while((line = signal_getline(&remote_candidate))!=NULL)
+        {    
+            rtcdc_parse_candidate_sdp(offerer, line);
+            printf("%s\n", line);
         }
-        free(abs_file_path);
-        fclose(f_local_candidate);  
-
-        signal_get_remote_candidate_file(offerer, peer_sample);
-        signal_gen_local_SDP_file(offerer, peer_sample);
+        
+        // signaling send local sdp
+        local_sdp = rtcdc_generate_offer_sdp(offerer);
+        signal_send_SDP(signal_conn, argv[1], local_sdp);
 
         main_loop = uv_default_loop();         
         uv_work_t work[2];
