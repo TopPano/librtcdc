@@ -18,7 +18,7 @@ typedef struct sctp_packet sctp_packet;
 struct rtcdc_data_channel *offerer_dc;
 static uv_loop_t* trans_loop, *main_loop;
 
-char *candidate_sets;
+char *candidate_sets, *recvd_dir;
 struct conn_info__SDP *signal_conn;
 
 void on_open(){
@@ -36,7 +36,12 @@ void on_message(rtcdc_data_channel* dc, int datatype, void* data, size_t len, vo
 
     static FILE* recved_file;
     if(index == 0){
-        recved_file = fopen(msg, "w");
+        char recvd_file_path[128];
+        memset(recvd_file_path, 0, 128);
+        strcat(recvd_file_path, recvd_dir);
+        strcat(recvd_file_path, msg);
+
+        recved_file = fopen(recvd_file_path, "w");
     }else if(index>0){
         fwrite(msg, sizeof(char), packet_instance->data_len, recved_file);
     }else if(index == -1){
@@ -77,18 +82,18 @@ void sync_loop(uv_work_t *work){
 
 
 int main(int argc, char *argv[]){
-    if(argc!=3){
+    if(argc!=4){
         fprintf(stderr, "argument error!");
         return 0;
     }
 
     // argv[1] is local peer name
     // argv[2] is remote peer name
-
+    // argv[3] is the directory store the received file
     peer_info* peer_sample = (peer_info*)calloc(1, sizeof(peer_info));
     peer_sample->local_peer = argv[1];
     peer_sample->remote_peer = argv[2];
-
+    recvd_dir = argv[3];
     candidate_sets = (char *)calloc(1, DATASIZE*sizeof(char));
     // initial signaling
     const char *address = "140.112.90.37";
