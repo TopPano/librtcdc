@@ -15,6 +15,8 @@ static mongoc_client_t *client;
 static mongoc_collection_t *SDP_coll;
 static mongoc_collection_t *req_coll;
 
+static mongoc_collection_t *peer_coll;
+
 void delete_req(char *requested_peer_name)
 {
     bson_t *doc = bson_new();
@@ -208,11 +210,49 @@ static int callback_http(struct libwebsocket_context *context,
             break;
         default:
             break;
-
     }
     return 0;
-
 }
+
+
+static int callback_register(struct libwebsocket_context *context,
+        struct libwebsocket *wsi,
+        enum libwebsocket_callback_reasons reason, void *user,
+        void *in, size_t len)
+{
+//    struct session_data__SDP *session_data;
+    switch (reason) {
+
+        case LWS_CALLBACK_ESTABLISHED:
+            printf("register: LWS_CALLBACK_ESTABLISHED\n");
+            // wait for register from fileserver
+            break;
+        case LWS_CALLBACK_RECEIVE:
+            session_data = (struct session_data__SDP *)in;
+            switch (session_data->state){
+                case SERVER_REGISTER:
+                    /*
+                     * gen a fileserver_dns
+                     * store fileserver_dns, wsi in peer_coll
+                     * send SERVER_REGISTER_OK back to wsi
+                     * on_writable
+                     */
+
+                    break;
+                default:
+                    break;
+            }
+        case LWS_CALLBACK_SERVER_WRITEABLE:
+            /*
+             * send SERVER_REGISTER_OK back
+             */
+            break;
+        default:
+            break;
+    }
+    return 0;
+}
+
 
 static int callback_SDP(struct libwebsocket_context *context,
         struct libwebsocket *wsi,
@@ -220,11 +260,6 @@ static int callback_SDP(struct libwebsocket_context *context,
         void *in, size_t len)
 {
     struct session_data__SDP *session_data;
-    char *peer_name, *data, *requested_peer_name;
-    struct libwebsocket *requester_wsi;
-    int i;
-    struct SDP_context* SDP_ptr;
-    struct req_context* req;
     switch (reason) {
 
         case LWS_CALLBACK_ESTABLISHED:
@@ -233,100 +268,29 @@ static int callback_SDP(struct libwebsocket_context *context,
         case LWS_CALLBACK_RECEIVE:
             session_data = (struct session_data__SDP *)in;
             switch (session_data->state){
-                case SEND_LOCAL_SDP:
-                    // recv the SDP 
-                    // insert it into SDP_queue
-                    // check if the peer_name of SDP is requested
-                    //    if yes, check if the candidate and SDP of peer_name are existed
-                    //          if yes, send SDP & candidate to requester
-                    //          if no, do nothing
-                    //    if no, do nothing
-                    peer_name = session_data->peer_name;
-                    data = session_data->data;
-#ifdef DEBUG_SIGNAL
-                    fprintf(stderr, "[signal server]:recv SDP from %s:\"%s\"\n", peer_name, data);
-#endif
-                    insert_SDP_in_queue(peer_name, data);
-                    
-                    // check if the peer_name of SDP is requested
-                    if((req = req_isExist(peer_name)) != NULL)
-                    {
-                       
-                       requested_peer_name = peer_name; 
-                       // declare requested_peer_name because of sematic(by uniray7)
-                       //    if yes, check if the candidate and SDP of peer_name are existed
-                       if((SDP_ptr = SDP_context_isExist(requested_peer_name)) != NULL)
-                        {
-                            // if yes, send SDP & candidate to requester
-                            SDP_ptr->state = RECV_SDP_CONTEXT;
-                            libwebsocket_write(req->requester_wsi, (void *)SDP_ptr, sizeof(struct SDP_context), LWS_WRITE_TEXT);
-                            free(SDP_ptr);
-                            // delete the req
-                            delete_req(requested_peer_name);
-                        }
-                        //if no, do nothing
-                    }
-
+                case FILESERVER_SDP:
+                    /*
+                     * whenever receiving SDP from fileserver
+                     * extract the client id 
+                     * search the client id and get the client wsi(mongoDB)
+                     * send the fileserver sdp to the client wsi
+                     */
                     break;
-                case SEND_LOCAL_CANDIDATE:
-                    // recv the candidate 
-                    // insert it into SDP_queue
-                    // check if the peer_name of candidate is requested
-                    //    if yes, check if the candidate and SDP of peer_name are existed
-                    //          if yes, send SDP & candidate to requester
-                    //          if no, do nothing
-                    //    if no, do nothing
-
-                    peer_name = session_data->peer_name;
-                    data = session_data->data;
-#ifdef DEBUG_SIGNAL
-                    fprintf(stderr, "[signal server]:recv canidate from %s:\"%s\"\n", peer_name, data);
-#endif
-                    insert_candidate_in_queue(peer_name, data);
-
-                    // check if the peer_name of candidate is requested
-                    if((req = req_isExist(peer_name)) != NULL)
-                    {
-                       requested_peer_name = peer_name; 
-                       // declare requested_peer_name because of sematic(by uniray7)
-                       //    if yes, check if the candidate and SDP of peer_name are existed
-                       if((SDP_ptr = SDP_context_isExist(requested_peer_name)) != NULL)
-                        {
-                            // if yes, send SDP & candidate to requester
-                            SDP_ptr->state = RECV_SDP_CONTEXT;
-                            libwebsocket_write(req->requester_wsi, (void *)SDP_ptr, sizeof(struct SDP_context), LWS_WRITE_TEXT);
-                            // delete the req
-                            delete_req(requested_peer_name);
-                            free(SDP_ptr);
-                        }
-                        //if no, do nothing
-                    }
-
+                case CLIENT_SDP:
+                    /*
+                     * whenever receiving SDP from a client
+                     * generate a client id 
+                     * store the id and the client wsi in mongoDB
+                     * dispatch to a fileserver, get the fileserver name and wsi
+                     * send the client sdp to the file server
+                     */
                     break;
-                case REQ_SDP_CONTEXT:
-                    // whenever recv the req 
-                    // check if the requested SDP is in SDP_queue
-                    // if yes, send the SDP_context back
-                    // otherwise insert into req_queue
-                    
-                    requested_peer_name = session_data->peer_name;
-                    data = session_data->data;
-#ifdef DEBUG_SIGNAL
-                    fprintf(stderr, "[signal server][REQ_SDP_CONTEXT]:recv req for %s\n", requested_peer_name);
-#endif
-                    // check if the requested SDP is in SDP_queue
-                    if((SDP_ptr = SDP_context_isExist(requested_peer_name)) != NULL)
-                    {
-                            // if yes, send the SDP_context back
-                            SDP_ptr->state = RECV_SDP_CONTEXT;
-                            libwebsocket_write(wsi, (void *)SDP_ptr, sizeof(struct SDP_context), LWS_WRITE_TEXT);
-                    }
-                    else
-                    {        
-                        // if no, insert into req_queue
-                        insert_req_queue(wsi, requested_peer_name);
-                    }
-                    
+                case CLIENT_OFF:
+                    /*
+                     * when the client is offline,
+                     * remove it in mongoDB
+                     * and free the client wsi
+                     */
                     break;
                 default:
                     break;
@@ -339,6 +303,15 @@ static int callback_SDP(struct libwebsocket_context *context,
     }
     return 0;
 }
+
+
+void sighandler(int sig)
+{
+    force_exit = 1;
+    libwebsocket_cancel_service(context);
+}
+
+
 static struct libwebsocket_protocols protocols[] = {
     {
         "http-only",
@@ -349,23 +322,24 @@ static struct libwebsocket_protocols protocols[] = {
     {
         "SDP-protocol",
         callback_SDP,
-        sizeof(struct session_data__SDP),
+        sizeof(struct signal_SDP_data),
         10,
     },
+    {
+        "register-protocol",
+        callback_register,
+        sizeof(struct signal_register_data),
+        10,
+    },   
+    
     { NULL, NULL, 0, 0 }
 };
 
 
-
-void sighandler(int sig)
-{
-    force_exit = 1;
-    libwebsocket_cancel_service(context);
-}
-
-
 int main()
 {
+
+    /* initial the libwebsockets */
     char cert_path[1024];
     char key_path[1024];
     int use_ssl = 0;
@@ -410,8 +384,10 @@ int main()
     /* initial the connection to mongodb */
     mongoc_init ();
     client = mongoc_client_new ("mongodb://localhost:27017/");
-    SDP_coll = mongoc_client_get_collection (client, "signal", "SDP");
-    req_coll = mongoc_client_get_collection (client, "signal", "req");
+
+
+    peer_coll - mongoc_client_get_collection(client, "signal", "peer");
+
 
     while( n>=0 && !force_exit){
         n = libwebsocket_service(context, 50);

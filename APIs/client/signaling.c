@@ -10,6 +10,7 @@ static struct session_data__SDP* signal_session_data;
 static struct SDP_context *recvd_SDP;
 pthread_mutex_t mutex;
 
+
 char *signal_getline(char **string)
 {
     char *line = (char *)calloc(1, 128*sizeof(char));
@@ -83,7 +84,7 @@ static struct libwebsocket_protocols protocols[] = {
 
 
 
-struct SDP_context* signal_req(struct conn_info__SDP* SDP_conn, char *peer_name)
+struct SDP_context* signal_req(struct signal_conn_info* SDP_conn, char *peer_name)
 {
     struct SDP_context *SDP = NULL;
     struct session_data__SDP *session_data = (struct session_data__SDP *)calloc(1, sizeof(struct session_data__SDP));
@@ -106,12 +107,12 @@ struct SDP_context* signal_req(struct conn_info__SDP* SDP_conn, char *peer_name)
     return SDP;
 }
 
-void signal_send(struct conn_info__SDP* SDP_conn, struct session_data__SDP *session_data)
+void signal_send(struct signal_conn_info* SDP_conn, struct session_data__SDP *session_data)
 {
     struct libwebsocket *wsi = SDP_conn->wsi;
     struct libwebsocket_context *context = SDP_conn->context;
     signal_session_data = session_data;
-   
+
     /*FIX ME*/
     usleep(25000);
     libwebsocket_callback_on_writable(context, wsi);
@@ -119,7 +120,7 @@ void signal_send(struct conn_info__SDP* SDP_conn, struct session_data__SDP *sess
 }
 
 
-void signal_send_SDP(struct conn_info__SDP *SDP_conn, char *peer_name, char *SDP)
+void signal_send_SDP(struct signal_conn_info *SDP_conn, char *peer_name, char *SDP)
 {
     struct session_data__SDP *session_data = (struct session_data__SDP *)calloc(1, sizeof(struct session_data__SDP));
     session_data->state = SEND_LOCAL_SDP;
@@ -129,7 +130,7 @@ void signal_send_SDP(struct conn_info__SDP *SDP_conn, char *peer_name, char *SDP
 }
 
 
-void signal_send_candidate(struct conn_info__SDP *SDP_conn, char *peer_name, char *candidate)
+void signal_send_candidate(struct signal_conn_info *SDP_conn, char *peer_name, char *candidate)
 {
     struct session_data__SDP *session_data = (struct session_data__SDP *)calloc(1, sizeof(struct session_data__SDP));
     session_data->state = SEND_LOCAL_CANDIDATE;
@@ -139,12 +140,12 @@ void signal_send_candidate(struct conn_info__SDP *SDP_conn, char *peer_name, cha
 }
 
 
-struct conn_info__SDP* signal_initial(const char *address, int port)
+struct signal_conn* signal_initial(const char *address, int port)
 {
     struct libwebsocket *wsi;
     int use_ssl = 0;
     const char *iface = NULL;
-   
+
     int ietf_version = -1; 
     int opts = 0;
 
@@ -155,7 +156,7 @@ struct conn_info__SDP* signal_initial(const char *address, int port)
     openlog("lwsts", syslog_options, LOG_DAEMON);
     lws_set_log_level(debug_level, lwsl_emit_syslog);
     /*end syslog setting*/
-    
+
     struct libwebsocket_context *context; 
     struct lws_context_creation_info info;
     memset(&info, 0, sizeof(info));
@@ -170,7 +171,7 @@ struct conn_info__SDP* signal_initial(const char *address, int port)
     info.options = opts;
 
 
-    struct conn_info__SDP* SDP_conn = (struct conn_info__SDP *)calloc(1, sizeof(struct conn_info__SDP)); 
+    struct signal_conn_info* SDP_conn = (struct signal_conn_info *)calloc(1, sizeof(struct signal_conn_info)); 
     context = libwebsocket_create_context(&info);
     if (context == NULL) {
         lwsl_err("libwebsocket_create_context failed\n");
@@ -197,7 +198,7 @@ bail:
 }
 
 
-void signal_close(struct conn_info__SDP* conn_info)
+void signal_close(struct signal_conn_info* conn_info)
 {
     fprintf(stderr, "close the connect\n");
     struct libwebsocket_context *context = conn_info->context;
