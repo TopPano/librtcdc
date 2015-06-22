@@ -5,7 +5,7 @@
 #include <string.h>
 #include <bson.h>
 #include <mongoc.h>
-#include "../signaling.h"
+#include "signal.h"
 #define DEBUG_SIGNAL
 
 static struct libwebsocket_context *context;
@@ -14,13 +14,16 @@ static volatile int force_exit = 0;
 static mongoc_client_t *client;
 
 static mongoc_collection_t *peer_coll;
-/*
+
+static mongoc_collection_t *SDP_coll;
+static mongoc_collection_t *req_coll;
+
 void delete_req(char *requested_peer_name)
 {
     bson_t *doc = bson_new();
     bson_error_t error;
     BSON_APPEND_UTF8 (doc, "requested_peer_name", requested_peer_name);
-    
+
     if (!mongoc_collection_remove (req_coll, MONGOC_DELETE_SINGLE_REMOVE, doc, NULL, &error)) 
     {
         printf ("%s\n", error.message);
@@ -28,19 +31,19 @@ void delete_req(char *requested_peer_name)
 }
 
 
-void insert_req_queue(struct libwebsocket *requester_wsi, char *requested_peer_name)
+void insert_peer(char *peer_name, struct libwebsocket *peer_wsi)
 {
     bson_t *doc = bson_new();
     bson_oid_t oid;
     bson_error_t error;
-    
+
     bson_oid_init (&oid, NULL);
     BSON_APPEND_OID (doc, "_id", &oid);
-    BSON_APPEND_UTF8 (doc, "requested_peer_name", requested_peer_name);
-    intptr_t req_wsi_ptr = (intptr_t)requester_wsi;
-    BSON_APPEND_INT32 (doc, "requester_wsi", req_wsi_ptr);
+    BSON_APPEND_UTF8 (doc, "peer_name", peer_name);
+    intptr_t wsi_ptr = (intptr_t)peer_wsi;
+    BSON_APPEND_INT32 (doc, "requester_wsi", wsi_ptr);
 
-    if (!mongoc_collection_insert (req_coll, MONGOC_INSERT_NONE, doc, NULL, &error)) 
+    if (!mongoc_collection_insert (peer_coll, MONGOC_INSERT_NONE, doc, NULL, &error)) 
     {
         printf ("%s\n", error.message);
     }
@@ -71,7 +74,7 @@ struct req_context* req_isExist(char *peer_name)
     BSON_APPEND_UTF8(find_query, "requested_peer_name", peer_name);
     BSON_APPEND_BOOL(proj, "requester_wsi", true);
     cursor = mongoc_collection_find (req_coll, MONGOC_QUERY_NONE, 0, 0, 0, find_query, proj, NULL);
-    
+
     struct req_context* req = (struct req_context *)calloc(1, sizeof(struct req_context));
     strcpy(req->requested_peer_name, peer_name);
     if ( mongoc_cursor_next(cursor, &find_context) == 0)
@@ -97,7 +100,7 @@ struct SDP_context *SDP_context_isExist(char *peer_name)
     bson_t *proj = bson_new();
     BSON_APPEND_UTF8(find_query, "peer_name", peer_name);
     cursor = mongoc_collection_find (SDP_coll, MONGOC_QUERY_NONE, 0, 0, 0, find_query, NULL, NULL);
-    
+
     if ( mongoc_cursor_next(cursor, &find_context) == 0)
         return NULL;
     else{
@@ -118,7 +121,7 @@ struct SDP_context *SDP_context_isExist(char *peer_name)
             return SDP_context_ins;
         }
     }
-   
+
 }
 
 
@@ -138,11 +141,11 @@ void insert_candidate_in_queue(char *peer_name, char *candidate)
         bson_t *update_query = NULL;
         update_query = BCON_NEW ("peer_name", peer_name);
         update_context = BCON_NEW ("$set", "{",
-                                        "candidate", BCON_UTF8 (candidate),
-                                   "}");
+                "candidate", BCON_UTF8 (candidate),
+                "}");
         if (!mongoc_collection_update (SDP_coll, MONGOC_UPDATE_NONE, update_query, update_context, NULL, &error)) 
             printf ("%s\n", error.message);
-        
+
     }
     else{
         // insert
@@ -160,7 +163,7 @@ void insert_candidate_in_queue(char *peer_name, char *candidate)
 
 }
 
-void insert_SDP_in_queue(char *peer_name, char*SDP)
+void insert_peer_in_queue(char *peer_name, char*SDP)
 {
     // check peer_name is existed in SDP_coll,
     // if yes, update the SDP value
@@ -175,11 +178,11 @@ void insert_SDP_in_queue(char *peer_name, char*SDP)
         bson_t *update_query = NULL;
         update_query = BCON_NEW ("peer_name", peer_name);
         update_context = BCON_NEW ("$set", "{",
-                                        "SDP", BCON_UTF8 (SDP),
-                                   "}");
+                "SDP", BCON_UTF8 (SDP),
+                "}");
         if (!mongoc_collection_update (SDP_coll, MONGOC_UPDATE_NONE, update_query, update_context, NULL, &error)) 
             printf ("%s\n", error.message);
-        
+
     }
     else{
         // insert
@@ -196,7 +199,7 @@ void insert_SDP_in_queue(char *peer_name, char*SDP)
     }
 
 }
-*/
+
 
 static int callback_http(struct libwebsocket_context *context,
         struct libwebsocket *wsi,
@@ -208,71 +211,58 @@ static int callback_http(struct libwebsocket_context *context,
             break;
         default:
             break;
+
     }
     return 0;
-}
 
+}
 
 static int callback_SDP(struct libwebsocket_context *context,
         struct libwebsocket *wsi,
         enum libwebsocket_callback_reasons reason, void *user,
         void *in, size_t len)
 {
-    SESSIONstate *session_state = (SESSIONstate *)user;
+    
     struct signal_session_data_t *sent_session_data;
     struct signal_session_data_t *recvd_session_data;
-    
+
+    char *peer_name, *data, *requested_peer_name;
     switch (reason) {
         case LWS_CALLBACK_ESTABLISHED:
-            printf("SIGNALSERVER: LWS_CALLBACK_ESTABLISHED\n");
-            *session_state = SIGNALSERVER_READY;
+            fprintf(stderr, "SIGNAL_SERVER: LWS_CALLBACK_ESTABLISHED\n");
             break;
         case LWS_CALLBACK_CLIENT_CONNECTION_ERROR:
-            fprintf(stderr, "SIGNALSERVER: LWS_CALLBACK_CLIENT_CONNECTION_ERROR\n");
+            fprintf(stderr, "SIGNAL_SERVER: LWS_CALLBACK_CLIENT_CONNECTION_ERROR\n");
             break;
         case LWS_CALLBACK_CLOSED:
-            fprintf(stderr, "SIGNALSERVER: LWS_CALLBACK_CLOSED\n");
+            fprintf(stderr, "SIGNAL_SERVER: LWS_CALLBACK_CLOSED\n");
             break;
-
         case LWS_CALLBACK_RECEIVE:
             recvd_session_data = (struct signal_session_data_t *)in;
             switch (recvd_session_data->type){
                 case FILESERVER_REGISTER_t:
-                    fprintf(stderr, "receive FILESERVER_REGISTER_t\n");
+                    fprintf(stderr, "SIGNAL_SERVER: receive FILESERVER_REGISTER_t\n");
+                    // insert the fileserver info in mongoDB
+                    insert_peer("toppano:///server1.tw", wsi);
+                    
+                    //send FILESERVER_REGISTER_OK_t back to file server 
                     sent_session_data = (struct signal_session_data_t *)calloc(1, sizeof(struct signal_session_data_t));
                     sent_session_data->type = FILESERVER_REGISTER_OK_t;
-                    //libwebsocket_write(wsi, (char *)sent_session_data, sizeof(struct signal_session_data_t), LWS_WRITE_TEXT);
-                    free(sent_session_data);
-                    /*
-                     * gen a fileserver_dns
-                     * store fileserver_dns, wsi in peer_coll
-                     * send SERVER_REGISTER_OK back to wsi
-                     * on_writable
-                     */
-
+                    strcpy(sent_session_data->fileserver_dns, "toppano://server1.tw");
+                    libwebsocket_write(wsi, (char *)sent_session_data, sizeof(struct signal_session_data_t), LWS_WRITE_TEXT);
+                    
                     break;
                 default:
                     break;
             }
+
         case LWS_CALLBACK_SERVER_WRITEABLE:
-            /*
-             * send SERVER_REGISTER_OK back
-             */
             break;
         default:
             break;
     }
     return 0;
 }
-
-
-void sighandler(int sig)
-{
-    force_exit = 1;
-    libwebsocket_cancel_service(context);
-}
-
-
 static struct libwebsocket_protocols protocols[] = {
     {
         "http-only",
@@ -290,9 +280,16 @@ static struct libwebsocket_protocols protocols[] = {
 };
 
 
+
+void sighandler(int sig)
+{
+    force_exit = 1;
+    libwebsocket_cancel_service(context);
+}
+
+
 int main()
 {
-    /* initial the libwebsockets */
     char cert_path[1024];
     char key_path[1024];
     int use_ssl = 0;
@@ -337,8 +334,7 @@ int main()
     /* initial the connection to mongodb */
     mongoc_init ();
     client = mongoc_client_new ("mongodb://localhost:27017/");
-    peer_coll = mongoc_client_get_collection(client, "signal", "peer");
-
+    peer_coll = mongoc_client_get_collection (client, "signal", "peer");
 
     while( n>=0 && !force_exit){
         n = libwebsocket_service(context, 50);

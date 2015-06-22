@@ -23,7 +23,7 @@ typedef enum {
 
 struct signal_session_data_t{
     SIGNALDATAtype type;
-    char fileserver_dns[100];
+    char fileserver_dns[NAMESIZE];
 //    char client_dns[NAMESIZE];
 
 };

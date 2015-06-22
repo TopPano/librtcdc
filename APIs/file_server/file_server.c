@@ -18,8 +18,8 @@ static int callback_SDP(struct libwebsocket_context *context,
         enum libwebsocket_callback_reasons reason, void *user,
         void *in, size_t len){
     SESSIONstate *session_state = (SESSIONstate *)user;
-    struct signal_session_data_t *sent_session_data = NULL;
-    struct signal_session_data_t *recvd_session_data = NULL;
+    static struct signal_session_data_t *sent_session_data = NULL;
+    static struct signal_session_data_t *recvd_session_data = NULL;
     int result;
     switch (reason){
         case LWS_CALLBACK_CLIENT_ESTABLISHED:    
@@ -44,9 +44,9 @@ static int callback_SDP(struct libwebsocket_context *context,
             switch(*session_state){ 
                 case(FILESERVER_INITIAL):
                     sent_session_data->type = FILESERVER_REGISTER_t;
-                    //memset(sent_session_data->fileserver_dns, '\0', NAMESIZE);
+                    memset(sent_session_data->fileserver_dns, '\0', NAMESIZE);
                     fprintf(stderr, "FILESERVER: send FILESERVER_REGISTER_t\n");
-                    result = libwebsocket_write(wsi, (char *)sent_session_data, sizeof(struct signal_session_data_t), LWS_WRITE_TEXT);
+                    result = libwebsocket_write(wsi, (void *)sent_session_data, sizeof(struct signal_session_data_t), LWS_WRITE_TEXT);
                     if(result == -1)
                         fprintf(stderr, "libwebsocket_write error\n");
                     free(sent_session_data);
@@ -59,7 +59,7 @@ static int callback_SDP(struct libwebsocket_context *context,
             recvd_session_data = (struct signal_session_data_t *)in;
             if( *session_state == FILESERVER_INITIAL){
                 switch (recvd_session_data->type){
-                    case(FILESERVER_REGISTER_OK_t):
+                    case FILESERVER_REGISTER_OK_t:
                         *session_state = FILESERVER_READY;
                         fprintf(stderr, "FILESERVER: ready\n");
                         break;
