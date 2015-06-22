@@ -1,50 +1,85 @@
 #include "../signaling.h"
 #include <libwebsockets.h>
 
+#define SIG_SERVER_IP "140.112.90.37"
+#define SIG_SERVER_PORT 7681
+#define REPOS_PATH "/home/uniray/warehouse"
+
+
 /* 
  * whenever the fileserver is online, reigter to the signaling server 
  * after registering, waiting for the connection of users
  */
 
-static int fileserver_isRegister;
-static int register_exit;
+static volatile int register_exit;
 
-
-
-static int callback_register(struct libwebsocket_context *context, 
+static int callback_SDP(struct libwebsocket_context *context, 
         struct libwebsocket *wsi, 
         enum libwebsocket_callback_reasons reason, void *user,
         void *in, size_t len){
+    SESSIONstate *session_state = (SESSIONstate *)user;
+    struct signal_session_data_t *sent_session_data = NULL;
+    struct signal_session_data_t *recvd_session_data = NULL;
+    int result;
     switch (reason){
         case LWS_CALLBACK_CLIENT_ESTABLISHED:    
-            fprintf(stderr, "register: LWS_CALLBACK_CLIENT_ESTABLISHED\n");
+            fprintf(stderr, "FILESERVER: LWS_CALLBACK_CLIENT_ESTABLISHED\n");
             // start register
-            // on_writable
+            *session_state = FILESERVER_INITIAL;
+            libwebsocket_callback_on_writable(context, wsi);
             break;
 
         case LWS_CALLBACK_CLIENT_CONNECTION_ERROR:
-            fprintf(stderr, "register: LWS_CALLBACK_CLIENT_CONNECTION_ERROR\n");
+            fprintf(stderr, "FILESERVER: LWS_CALLBACK_CLIENT_CONNECTION_ERROR\n");
             break;
         
         case LWS_CALLBACK_CLOSED:
-            fprintf(stderr, "register: LWS_CALLBACK_CLOSED\n");
+            fprintf(stderr, "FILESERVER: LWS_CALLBACK_CLOSED\n");
+            register_exit = 1 ;
             break;
-
 
         case LWS_CALLBACK_CLIENT_WRITEABLE:
-
-        //send msg: SERVER_REGISTER
+            //send msg: SERVER_REGISTER
+            sent_session_data = (struct signal_session_data_t *)calloc(1, sizeof(struct signal_session_data_t));
+            switch(*session_state){ 
+                case(FILESERVER_INITIAL):
+                    sent_session_data->type = FILESERVER_REGISTER_t;
+                    //memset(sent_session_data->fileserver_dns, '\0', NAMESIZE);
+                    fprintf(stderr, "FILESERVER: send FILESERVER_REGISTER_t\n");
+                    result = libwebsocket_write(wsi, (char *)sent_session_data, sizeof(struct signal_session_data_t), LWS_WRITE_TEXT);
+                    if(result == -1)
+                        fprintf(stderr, "libwebsocket_write error\n");
+                    free(sent_session_data);
+                    break;
+              default:
+                    break;
+                    }
             break;
         case LWS_CALLBACK_CLIENT_RECEIVE:
-/*
- *          switch (status){
- *          case SERVER_REGISTER_OK:
- *          set fileserver_isRegister = 1; 
- *          register_force_exit = 1;
- *          close the signal register
- *          }
- */
-
+            recvd_session_data = (struct signal_session_data_t *)in;
+            if( *session_state == FILESERVER_INITIAL){
+                switch (recvd_session_data->type){
+                    case(FILESERVER_REGISTER_OK_t):
+                        *session_state = FILESERVER_READY;
+                        fprintf(stderr, "FILESERVER: ready\n");
+                        break;
+                    default:
+                        break;
+                }
+            }
+            else if ( *session_state == FILESERVER_READY){
+                switch (recvd_session_data->type){
+                    case CLIENT_SDP_t:
+                        /*
+                         * whenever receive client SDP,
+                         * parse it and generate FILESERVER SDP
+                         * the send it back
+                         */
+                        break;
+                    default:
+                        break;
+                }
+            }
             break;
         default:
             // timeout and not receive SERVER_REGISTER_OK? do what?
@@ -53,7 +88,7 @@ static int callback_register(struct libwebsocket_context *context,
 }
 
 
-static int callback_SDP(struct libwebsocket_context *context, 
+static int callback_SDP2(struct libwebsocket_context *context, 
         struct libwebsocket *wsi, 
         enum libwebsocket_callback_reasons reason, void *user,
         void *in, size_t len){
@@ -97,61 +132,34 @@ static int callback_SDP(struct libwebsocket_context *context,
     }
 
 
-
 }
 
-
-
-void fileserver_register(const char *signalserver_IP, int signalserver_port)
-{
-    // initialize libwebsockets
-    // create libwebsocket_context
-    
-    // signal_initial(signalserver_IP, signalserver_port, protocols);
-    
-    // signal_connect()
-    // blocked until the receive SERVER_REGISTER_OK
-}
-
-
-
-void fileserver_listen(const char *signalserver_IP, int signalserver_port, const char* repos_path)
-{
-    // initialize libwebsockets
-    // create libwebsocket_context
-    
-    // signal_initial(signalserver_IP, signalserver_port, protocols);
-    
-    // signal_connect()
-
-    // blocked until force exit
-
-}
 
 static struct libwebsocket_protocols protocols[] = {
     {
-        "http-only",
-        callback_http,
-        0,
-        0,
-    },
-    {
         "SDP-protocol",
         callback_SDP,
-        sizeof(struct signal_SDP_data),
+        sizeof(struct signal_session_data_t),
         10,
     },
-    {
-        "register-protocol",
-        callback_register,
-        sizeof(struct signal_register_data),
-        10,
-    },   
-    
     { NULL, NULL, 0, 0 }
 };
 
 
-int main(){
+void fileserver_setup(const char *signalserver_IP, int signalserver_port)
+{
+    // initialize libwebsockets
+    struct signal_conn_info *conn = signal_initial(signalserver_IP, signalserver_port, protocols);
+    
+    register_exit = 0;
+    // signal_connect()
+    signal_connect(conn, &register_exit);
 
+    // blocked until the receive SERVER_REGISTER_OK
+}
+
+
+int main(){
+    fileserver_setup(SIG_SERVER_IP, SIG_SERVER_PORT);
+    return 0;
 }

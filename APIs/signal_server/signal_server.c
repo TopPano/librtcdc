@@ -16,7 +16,7 @@ static mongoc_collection_t *SDP_coll;
 static mongoc_collection_t *req_coll;
 
 static mongoc_collection_t *peer_coll;
-
+/*
 void delete_req(char *requested_peer_name)
 {
     bson_t *doc = bson_new();
@@ -198,7 +198,7 @@ void insert_SDP_in_queue(char *peer_name, char*SDP)
     }
 
 }
-
+*/
 
 static int callback_http(struct libwebsocket_context *context,
         struct libwebsocket *wsi,
@@ -215,22 +215,29 @@ static int callback_http(struct libwebsocket_context *context,
 }
 
 
-static int callback_register(struct libwebsocket_context *context,
+static int callback_SDP(struct libwebsocket_context *context,
         struct libwebsocket *wsi,
         enum libwebsocket_callback_reasons reason, void *user,
         void *in, size_t len)
 {
-//    struct session_data__SDP *session_data;
+    SESSIONstate *session_state = (SESSIONstate *)user;
+    struct signal_session_data_t *sent_session_data;
+    struct signal_session_data_t *recvd_session_data;
+    
     switch (reason) {
-
         case LWS_CALLBACK_ESTABLISHED:
-            printf("register: LWS_CALLBACK_ESTABLISHED\n");
-            // wait for register from fileserver
+            printf("SIGNALSERVER: LWS_CALLBACK_ESTABLISHED\n");
+            *session_state = SIGNALSERVER_READY;
             break;
         case LWS_CALLBACK_RECEIVE:
-            session_data = (struct session_data__SDP *)in;
-            switch (session_data->state){
-                case SERVER_REGISTER:
+            recvd_session_data = (struct signal_session_data_t *)in;
+            switch (recvd_session_data->type){
+                case FILESERVER_REGISTER_t:
+                    fprintf(stderr, "receive FILESERVER_REGISTER_t\n");
+                    sent_session_data = (struct signal_session_data_t *)calloc(1, sizeof(struct signal_session_data_t));
+                    sent_session_data->type = FILESERVER_REGISTER_OK_t;
+                    libwebsocket_write(wsi, (char *)sent_session_data, sizeof(struct signal_session_data_t), LWS_WRITE_TEXT);
+                    free(sent_session_data);
                     /*
                      * gen a fileserver_dns
                      * store fileserver_dns, wsi in peer_coll
@@ -253,30 +260,30 @@ static int callback_register(struct libwebsocket_context *context,
     return 0;
 }
 
-
-static int callback_SDP(struct libwebsocket_context *context,
+/*
+static int callback_SDP2(struct libwebsocket_context *context,
         struct libwebsocket *wsi,
         enum libwebsocket_callback_reasons reason, void *user,
         void *in, size_t len)
 {
-    struct session_data__SDP *session_data;
+    struct signal_SDP_data_t *recvd_data;
     switch (reason) {
 
         case LWS_CALLBACK_ESTABLISHED:
             printf("SDP: LWS_CALLBACK_ESTABLISHED\n");
             break;
         case LWS_CALLBACK_RECEIVE:
-            session_data = (struct session_data__SDP *)in;
-            switch (session_data->state){
-                case FILESERVER_SDP:
+            recvd_data = (struct signal_SDP_data_t *)in;
+            switch (recvd_data->state){
+                case FILESERVER_SDP:*/
                     /*
                      * whenever receiving SDP from fileserver
                      * extract the client id 
                      * search the client id and get the client wsi(mongoDB)
                      * send the fileserver sdp to the client wsi
                      */
-                    break;
-                case CLIENT_SDP:
+                   // break;
+                //case CLIENT_SDP:
                     /*
                      * whenever receiving SDP from a client
                      * generate a client id 
@@ -284,14 +291,14 @@ static int callback_SDP(struct libwebsocket_context *context,
                      * dispatch to a fileserver, get the fileserver name and wsi
                      * send the client sdp to the file server
                      */
-                    break;
-                case CLIENT_OFF:
+                  //  break;
+                //case CLIENT_OFF:
                     /*
                      * when the client is offline,
                      * remove it in mongoDB
                      * and free the client wsi
                      */
-                    break;
+                  /*  break;
                 default:
                     break;
             }
@@ -303,7 +310,7 @@ static int callback_SDP(struct libwebsocket_context *context,
     }
     return 0;
 }
-
+*/
 
 void sighandler(int sig)
 {
@@ -322,16 +329,9 @@ static struct libwebsocket_protocols protocols[] = {
     {
         "SDP-protocol",
         callback_SDP,
-        sizeof(struct signal_SDP_data),
+        sizeof(struct signal_session_data_t),
         10,
     },
-    {
-        "register-protocol",
-        callback_register,
-        sizeof(struct signal_register_data),
-        10,
-    },   
-    
     { NULL, NULL, 0, 0 }
 };
 
@@ -384,9 +384,7 @@ int main()
     /* initial the connection to mongodb */
     mongoc_init ();
     client = mongoc_client_new ("mongodb://localhost:27017/");
-
-
-    peer_coll - mongoc_client_get_collection(client, "signal", "peer");
+    peer_coll = mongoc_client_get_collection(client, "signal", "peer");
 
 
     while( n>=0 && !force_exit){
