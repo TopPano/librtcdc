@@ -1,19 +1,66 @@
-#include "signaling.h"
 #include <stdio.h>
+#include <rtcdc.h>
+#include "signaling.h"
 
+typedef struct rtcdc_peer_connection rtcdc_peer_connection;
+typedef struct rtcdc_data_channel rtcdc_data_channel;
 
 struct conn_info *signal_conn;
 static volatile int fileserver_exit;
 
+
+void on_message(rtcdc_data_channel* dc, int datatype, void* data, size_t len, void* user_data){
+}
+
+void on_close_channel(){
+    fprintf(stderr, "close channel!\n");
+}
+
+
+void on_channel(rtcdc_peer_connection *peer, rtcdc_data_channel* dc, void* user_data){
+    dc->on_message = on_message;
+    fprintf(stderr, "on channel!!\n");
+}
+
+
+void on_candidate(rtcdc_peer_connection *peer, char *candidate, void *user_data ){
+    char *endl = "\n";
+    char *candidates = (char *)user_data;
+    candidates = strcat(candidates, candidate);
+    candidates = strcat(candidates, endl);
+}
+
+
+void on_connect(){
+    fprintf(stderr, "on connect!\n");
+}
+
+
+void parse_candidates(rtcdc_peer_connection *peer, char *candidates)
+{
+    char *line;
+    while((line = signal_getline(&candidates)) != NULL){    
+        rtcdc_parse_candidate_sdp(peer, line);
+        // printf("%s\n", line);
+    }
+
+}
 
 static int callback_fileserver(struct libwebsocket_context *context,
         struct libwebsocket *wsi,
         enum libwebsocket_callback_reasons reason, void *user,
         void *in, size_t len)
 {
-    struct signal_session_data_t *sent_session_data;
+    struct signal_session_data_t *sent_session_data = NULL;
     struct signal_session_data_t *recvd_session_data = NULL;
     SESSIONstate *session_state = (SESSIONstate *)user;
+
+    char *fileserver_SDP = NULL;
+    char *fileserver_candidates = NULL; 
+    char *client_SDP = NULL;
+    char *client_candidates = NULL; 
+    rtcdc_peer_connection* answerer = NULL;
+
     switch (reason) {
         case LWS_CALLBACK_CLIENT_ESTABLISHED:
             fprintf(stderr, "FILE_SERVER: LWS_CALLBACK_CLIENT_ESTABLISHED\n");
@@ -27,6 +74,7 @@ static int callback_fileserver(struct libwebsocket_context *context,
 
         case LWS_CALLBACK_CLOSED:
             fprintf(stderr, "FILE_SERVER: LWS_CALLBACK_CLOSED\n");
+            // TODO when close signaling session, fileserver needs to deregister to signaling server
             fileserver_exit = 1;
             break;
 
@@ -61,16 +109,35 @@ static int callback_fileserver(struct libwebsocket_context *context,
             else if(*session_state == FILESERVER_READY){
                 switch(recvd_session_data->type){
                     case CLIENT_SDP_t:
-                        fprintf(stderr, "FILE_SERVER: RECEIVE CLIENT_SDP_t\nSDP: %s\ncandidates: %s\n", recvd_session_data->SDP, recvd_session_data->candidates);
+
+                        // create rtcdc_peer_connection
+                        fileserver_candidates = (char *)calloc(1, DATASIZE*sizeof(char));
+                        answerer = rtcdc_create_peer_connection((void*)on_channel, (void*)on_candidate, (void *)on_connect, "stun.services.mozilla.com", 0, (void *)fileserver_candidates);
+
+                        // parse client sdp
+                        rtcdc_parse_offer_sdp(answerer, recvd_session_data->SDP);
+                        parse_candidates(answerer, recvd_session_data->candidates);
+
+                        // gen fileserver sdp and send back
+                        fileserver_SDP = rtcdc_generate_offer_sdp(answerer);
                         
+                        sent_session_data = (struct signal_session_data_t *)calloc(1, sizeof(struct signal_session_data_t));
+                        sent_session_data->type = FILESERVER_SDP_t;
+                        strcpy(sent_session_data->fileserver_dns, recvd_session_data->fileserver_dns);
+                        strcpy(sent_session_data->client_dns, recvd_session_data->client_dns);
+                        strcpy(sent_session_data->SDP, fileserver_SDP);
+                        strcpy(sent_session_data->candidates, fileserver_candidates);
+                        libwebsocket_write(wsi, (char *) sent_session_data, sizeof(struct signal_session_data_t), LWS_WRITE_TEXT);
+                        free(sent_session_data);
+                        
+                        // libuv rtcdc_loop()
+                        rtcdc_loop(answerer);
+
                         break;
                     default:
                         break;
-                }
-
-
-            }
-
+                } // end switch
+            } // end if
             break;
         default:
             break;

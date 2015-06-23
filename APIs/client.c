@@ -10,8 +10,13 @@ static volatile int client_exit;
 static rtcdc_peer_connection* offerer;
 
 
+void on_open_channel(){
+        fprintf(stderr, "CLIENT: rtcdc open channel!\n");
+}
+
 void on_message(rtcdc_data_channel* dc, int datatype, void* data, size_t len, void* user_data){
 }
+
 
 void on_close_channel(){
     fprintf(stderr, "close channel!\n");
@@ -32,8 +37,22 @@ void on_candidate(rtcdc_peer_connection *peer, char *candidate, void *user_data 
 }
 
 
-void on_connect(){
-    fprintf(stderr, "on connect!\n");
+void on_connect(rtcdc_peer_connection *peer, void *user_data){
+    fprintf(stderr, "CLIENT: rtcdc on connect!\n");
+    fprintf(stderr, "CLIENT: rtcdc create data channel\n");
+    rtcdc_data_channel *offerer_dc = rtcdc_create_data_channel(peer, "Demo Channel", "", on_open_channel, on_message, NULL, NULL); 
+    if(offerer_dc == NULL){
+        fprintf(stderr, "CLIENT: fail to create rtcdc data channel\n"); 
+    }
+}
+
+
+void parse_candidates(rtcdc_peer_connection *peer, char *candidates)
+{
+    char *line;
+    while((line = signal_getline(&candidates)) != NULL){
+        rtcdc_parse_candidate_sdp(peer, line);
+    }
 }
 
 
@@ -42,11 +61,12 @@ static int callback_client(struct libwebsocket_context *context,
         enum libwebsocket_callback_reasons reason, void *user,
         void *in, size_t len)
 {
-    struct signal_session_data_t *sent_session_data;
+    struct signal_session_data_t *sent_session_data = NULL;
     struct signal_session_data_t *recvd_session_data = NULL;
     SESSIONstate *session_state = (SESSIONstate *)user;
     int result;
-    char *client_SDP, *client_candidates;
+    char *client_SDP = NULL;
+    char *client_candidates = NULL;
     switch (reason) {
         case LWS_CALLBACK_CLIENT_ESTABLISHED:
             fprintf(stderr, "CLIENT: LWS_CALLBACK_CLIENT_ESTABLISHED\n");
@@ -70,7 +90,7 @@ static int callback_client(struct libwebsocket_context *context,
                     client_candidates = (char *)calloc(1, DATASIZE*sizeof(char));
                     offerer = rtcdc_create_peer_connection((void*)on_channel, (void*)on_candidate, (void *)on_connect, "stun.services.mozilla.com", 0, (void *)client_candidates);
                     client_SDP = rtcdc_generate_offer_sdp(offerer);
-                    
+
                     sent_session_data = (struct signal_session_data_t *)calloc(1, sizeof(struct signal_session_data_t));
                     sent_session_data->type = CLIENT_SDP_t;
                     memset(sent_session_data->fileserver_dns, 0, NAMESIZE);
@@ -96,8 +116,12 @@ static int callback_client(struct libwebsocket_context *context,
                 switch(recvd_session_data->type){
                     case FILESERVER_SDP_t:
                         fprintf(stderr, "CLIENT: RECEIVE FILESERVER_SDP_t\n");
+
                         // receiving file server sdp and parse it
+                        rtcdc_parse_offer_sdp(offerer, recvd_session_data->SDP);
+                        parse_candidates(offerer, recvd_session_data->candidates);
                         // if success exchange sdp, then close libwebsocket
+                        // TODO deregister the client
                         client_exit = 1;
                         break;
                     default:
@@ -135,7 +159,7 @@ int main(int argc, char *argv[]){
     // generate exchange and parse sdp & candidates
     offerer = NULL;
     signal_connect(context, &client_exit);
-    
+    rtcdc_loop(offerer);
     // TODO: create data channel
 
     return 0;

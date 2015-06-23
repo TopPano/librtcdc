@@ -235,10 +235,10 @@ void signal_close(struct conn_info* conn)
 
 void signal_connect(struct libwebsocket_context *context, volatile int *exit)
 {
-    fprintf(stderr, "waiting for connect...\n");
+    fprintf(stderr, "SIGNALING: waiting for connect...\n");
     int n = 0;
     while( n >= 0 && !(*exit)){
         n = libwebsocket_service(context, 20);
     }
-
+    fprintf(stderr, "SIGNALING: close connect\n");
 }

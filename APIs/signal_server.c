@@ -274,6 +274,21 @@ static int callback_SDP(struct libwebsocket_context *context,
                     free(sent_session_data);
                     break;
 
+                 case FILESERVER_SDP_t:
+                    fprintf(stderr, "SIGNAL_SERVER: receive FILESERVER_SDP_t\n");
+                    
+                    client_wsi = get_wsi(recvd_session_data->client_dns);
+                    // transfer to the file server
+                    sent_session_data = (struct signal_session_data_t *)calloc(1, sizeof(struct signal_session_data_t));
+                    sent_session_data->type = FILESERVER_SDP_t;
+                    strcpy(sent_session_data->SDP, recvd_session_data->SDP);
+                    strcpy(sent_session_data->candidates, recvd_session_data->candidates);
+                    strcpy(sent_session_data->fileserver_dns, recvd_session_data->fileserver_dns);
+                    strcpy(sent_session_data->client_dns, recvd_session_data->client_dns);
+                    result = libwebsocket_write(client_wsi, (char *)sent_session_data, sizeof(struct signal_session_data_t), LWS_WRITE_TEXT);
+                    free(sent_session_data);
+                    break;
+
                 default:
                     break;
             }
