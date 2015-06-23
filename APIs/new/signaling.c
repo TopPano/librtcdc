@@ -2,7 +2,7 @@
 #include <signal.h>
 #include <string.h>
 #include <pthread.h>
-#include "signal.h"
+#include "signaling.h"
 
 static struct libwebsocket_context *context;
 static volatile int force_exit = 0;
@@ -29,7 +29,7 @@ char *signal_getline(char **string)
     return line;
 }
 
-
+/*
 static int callback_SDP(struct libwebsocket_context *context,
         struct libwebsocket *wsi,
         enum libwebsocket_callback_reasons reason, void *user,
@@ -85,9 +85,7 @@ static int callback_SDP(struct libwebsocket_context *context,
             }
             else if(*session_state == FILESERVER_READY){
             
-            
             }
-
             break;
         default:
             break;
@@ -105,6 +103,8 @@ static struct libwebsocket_protocols protocols[] = {
     },
     { NULL, NULL, 0, 0 }
 };
+*/
+
 
 
 /*
@@ -166,12 +166,11 @@ void signal_send_candidate(struct conn_info *SDP_conn, char *peer_name, char *ca
 }
 */
 
-struct conn_info* signal_initial(const char *address, int port)
+struct conn_info* signal_initial(const char *address, int port, struct libwebsocket_protocols protocols[], char *protocol_name)
 {
     struct libwebsocket *wsi;
     int use_ssl = 0;
     const char *iface = NULL;
-   
     int ietf_version = -1; 
     int opts = 0;
 
@@ -196,7 +195,6 @@ struct conn_info* signal_initial(const char *address, int port)
     info.uid = -1;
     info.options = opts;
 
-
     struct conn_info* SDP_conn = (struct conn_info *)calloc(1, sizeof(struct conn_info)); 
     context = libwebsocket_create_context(&info);
     if (context == NULL) {
@@ -206,14 +204,13 @@ struct conn_info* signal_initial(const char *address, int port)
     SDP_conn->context = context;
 
     wsi = libwebsocket_client_connect(context, address, port, use_ssl, "/", 
-            address, address, "SDP-protocol", ietf_version);
+            address, address, protocol_name, ietf_version);
     if (wsi == NULL)
     {
         fprintf(stderr, "libwebsocket_client_connect failed\n");
         goto bail;
     }
     SDP_conn->wsi = wsi;
-
     return SDP_conn;
 bail:
     fprintf(stderr, "Exit\n");
@@ -236,11 +233,11 @@ void signal_close(struct conn_info* conn)
 }
 
 
-void signal_connect(struct libwebsocket_context *context)
+void signal_connect(struct libwebsocket_context *context, volatile int *exit)
 {
     fprintf(stderr, "waiting for connect...\n");
     int n = 0;
-    while( n >= 0 && !force_exit){
+    while( n >= 0 && !(*exit)){
         n = libwebsocket_service(context, 20);
     }
 

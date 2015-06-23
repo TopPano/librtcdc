@@ -17,6 +17,9 @@ typedef enum {
     FILESERVER_READY,
     SIGNALSERVER_READY,
     SIGNALSERVER_RECV_REGISTER,
+    CLIENT_INITIAL,
+    CLIENT_WAIT,
+
     CLIENT_OFF,
 } SESSIONstate;
 
@@ -53,11 +56,12 @@ struct signal_session_data_t{
     char candidates[DATASIZE];
 };
 
-struct conn_info* signal_initial(const char *address, int port);
+
+struct conn_info* signal_initial(const char *address, int port, struct libwebsocket_protocols protocols[], char *protocol_name);
 
 char *signal_getline(char **string);
 
-void signal_connect(struct libwebsocket_context *context);
+void signal_connect(struct libwebsocket_context *context, volatile int *exit);
 
 void signal_close(struct conn_info *SDP_conn);
 

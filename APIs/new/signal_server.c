@@ -5,7 +5,7 @@
 #include <string.h>
 #include <bson.h>
 #include <mongoc.h>
-#include "signal.h"
+#include "signaling.h"
 #define DEBUG_SIGNAL
 
 static struct libwebsocket_context *context;
@@ -41,7 +41,7 @@ void insert_peer(char *peer_name, struct libwebsocket *peer_wsi)
     BSON_APPEND_OID (doc, "_id", &oid);
     BSON_APPEND_UTF8 (doc, "peer_name", peer_name);
     intptr_t wsi_ptr = (intptr_t)peer_wsi;
-    BSON_APPEND_INT32 (doc, "requester_wsi", wsi_ptr);
+    BSON_APPEND_INT32 (doc, "wsi", wsi_ptr);
 
     if (!mongoc_collection_insert (peer_coll, MONGOC_INSERT_NONE, doc, NULL, &error)) 
     {
@@ -65,29 +65,28 @@ int peer_name_isExist(mongoc_collection_t *coll, char *peer_name)
 }
 
 
-struct req_context* req_isExist(char *peer_name)
+struct libwebsocket* get_wsi(char *peer_name)
 {
     mongoc_cursor_t *cursor = NULL;
     const bson_t *find_context = NULL ;
     bson_t *find_query = bson_new();
     bson_t *proj = bson_new();
-    BSON_APPEND_UTF8(find_query, "requested_peer_name", peer_name);
-    BSON_APPEND_BOOL(proj, "requester_wsi", true);
-    cursor = mongoc_collection_find (req_coll, MONGOC_QUERY_NONE, 0, 0, 0, find_query, proj, NULL);
+    BSON_APPEND_UTF8(find_query, "peer_name", peer_name);
+    BSON_APPEND_BOOL(proj, "wsi", true);
+    cursor = mongoc_collection_find (peer_coll, MONGOC_QUERY_NONE, 0, 0, 0, find_query, proj, NULL);
 
-    struct req_context* req = (struct req_context *)calloc(1, sizeof(struct req_context));
-    strcpy(req->requested_peer_name, peer_name);
-    if ( mongoc_cursor_next(cursor, &find_context) == 0)
+    if ( mongoc_cursor_next(cursor, &find_context) == 0){
+        fprintf(stderr, "peer name %s does not exist in mongoDB\n", peer_name);
         return NULL;
+    }
     else{
         bson_iter_t iter, value;
         bson_iter_init(&iter, find_context);
-        bson_iter_find_descendant(&iter, "requester_wsi", &value);
+        bson_iter_find_descendant(&iter, "wsi", &value);
         BSON_ITER_HOLDS_INT32(&value);
         intptr_t wsi_ptr = (intptr_t) bson_iter_int32(&value);
-        struct libwebsocket *requester_wsi = (struct libwebsocket *)wsi_ptr;
-        req->requester_wsi = requester_wsi;
-        return req;
+        struct libwebsocket *wsi = (struct libwebsocket *)wsi_ptr;
+        return wsi;
     }
 }
 
@@ -222,11 +221,13 @@ static int callback_SDP(struct libwebsocket_context *context,
         enum libwebsocket_callback_reasons reason, void *user,
         void *in, size_t len)
 {
-    
-    struct signal_session_data_t *sent_session_data;
-    struct signal_session_data_t *recvd_session_data;
+    struct signal_session_data_t *sent_session_data = NULL;
+    struct signal_session_data_t *recvd_session_data = NULL;
 
-    char *peer_name, *data, *requested_peer_name;
+    struct libwebsocket *fileserver_wsi = NULL;
+    struct libwebsocket *client_wsi = NULL;
+    int result;
+
     switch (reason) {
         case LWS_CALLBACK_ESTABLISHED:
             fprintf(stderr, "SIGNAL_SERVER: LWS_CALLBACK_ESTABLISHED\n");
@@ -243,15 +244,36 @@ static int callback_SDP(struct libwebsocket_context *context,
                 case FILESERVER_REGISTER_t:
                     fprintf(stderr, "SIGNAL_SERVER: receive FILESERVER_REGISTER_t\n");
                     // insert the fileserver info in mongoDB
-                    insert_peer("toppano:///server1.tw", wsi);
+                    insert_peer("toppano://server1.tw", wsi);
                     
                     //send FILESERVER_REGISTER_OK_t back to file server 
                     sent_session_data = (struct signal_session_data_t *)calloc(1, sizeof(struct signal_session_data_t));
                     sent_session_data->type = FILESERVER_REGISTER_OK_t;
+                    // the file server dns is assigned by signaling server
                     strcpy(sent_session_data->fileserver_dns, "toppano://server1.tw");
-                    libwebsocket_write(wsi, (char *)sent_session_data, sizeof(struct signal_session_data_t), LWS_WRITE_TEXT);
-                    
+                    result = libwebsocket_write(wsi, (char *)sent_session_data, sizeof(struct signal_session_data_t), LWS_WRITE_TEXT);
+                    free(sent_session_data);
                     break;
+     
+                case CLIENT_SDP_t:
+                    fprintf(stderr, "SIGNAL_SERVER: receive CLIENT_SDP_t\n");
+                    // whenever receiving client sdp, send to a fileserver 
+                    // which the fileserver peer name is assign by signaling server
+                    // and record the client wsi and assign a client dns;
+                    insert_peer("client1", wsi);
+                    
+                    fileserver_wsi = get_wsi("toppano://server1.tw");
+                    // transfer to the file server
+                    sent_session_data = (struct signal_session_data_t *)calloc(1, sizeof(struct signal_session_data_t));
+                    sent_session_data->type = CLIENT_SDP_t;
+                    strcpy(sent_session_data->SDP, recvd_session_data->SDP);
+                    strcpy(sent_session_data->candidates, recvd_session_data->candidates);
+                    strcpy(sent_session_data->fileserver_dns, "toppano://server1.tw");
+                    strcpy(sent_session_data->client_dns, "client1");
+                    result = libwebsocket_write(fileserver_wsi, (char *)sent_session_data, sizeof(struct signal_session_data_t), LWS_WRITE_TEXT);
+                    free(sent_session_data);
+                    break;
+
                 default:
                     break;
             }
@@ -271,7 +293,13 @@ static struct libwebsocket_protocols protocols[] = {
         0,
     },
     {
-        "SDP-protocol",
+        "fileserver-protocol",
+        callback_SDP,
+        sizeof(struct signal_session_data_t),
+        10,
+    },
+    {
+        "client-protocol",
         callback_SDP,
         sizeof(struct signal_session_data_t),
         10,
