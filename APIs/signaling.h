@@ -63,13 +63,5 @@ char *signal_getline(char **string);
 
 void signal_connect(struct libwebsocket_context *context, volatile int *exit);
 
-void signal_close(struct conn_info *SDP_conn);
-
-void signal_send(struct conn_info *SDP_conn, struct signal_session_data_t *session_data);
-
-void signal_send_SDP(struct conn_info *SDP_conn, char *peer_name, char *SDP);
-
-void signal_send_candidate(struct conn_info *SDP_conn, char *peer_name, char *candidate);
-
 struct SDP_context* signal_req(struct conn_info* SDP_conn, char* peer_name);
 
