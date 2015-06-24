@@ -52,18 +52,6 @@ void insert_peer(char *peer_name, struct libwebsocket *peer_wsi)
 }
 
 
-int peer_name_isExist(mongoc_collection_t *coll, char *peer_name)
-{
-    mongoc_cursor_t *cursor = NULL;
-    const bson_t *find_context = NULL ;
-    bson_t *find_query = bson_new();
-    BSON_APPEND_UTF8(find_query, "peer_name", peer_name);
-    cursor = mongoc_collection_find (coll, MONGOC_QUERY_NONE, 0, 0, 0, find_query, NULL, NULL);
-    if ( mongoc_cursor_next(cursor, &find_context) == 0)
-        return 0;
-    else
-        return 1;
-}
 
 
 struct libwebsocket* get_wsi(char *peer_name)
@@ -90,116 +78,6 @@ struct libwebsocket* get_wsi(char *peer_name)
         return wsi;
     }
 }
-
-
-struct SDP_context *SDP_context_isExist(char *peer_name)
-{
-    mongoc_cursor_t *cursor = NULL;
-    const bson_t *find_context = NULL ;
-    bson_t *find_query = bson_new();
-    bson_t *proj = bson_new();
-    BSON_APPEND_UTF8(find_query, "peer_name", peer_name);
-    cursor = mongoc_collection_find (SDP_coll, MONGOC_QUERY_NONE, 0, 0, 0, find_query, NULL, NULL);
-
-    if ( mongoc_cursor_next(cursor, &find_context) == 0)
-        return NULL;
-    else{
-        bson_iter_t iter, value;
-        bson_iter_init(&iter, find_context);
-        bson_iter_find_descendant(&iter, "SDP", &value);
-        uint32_t len = DATASIZE;
-        const char *SDP = bson_iter_utf8(&value, &len);
-        bson_iter_find_descendant(&iter, "candidate", &value);
-        const char *candidate = bson_iter_utf8(&value, &len);
-        if(strcmp(candidate,"") == 0 || strcmp(SDP, "") ==0 )
-            return NULL;
-        else{
-            struct SDP_context *SDP_context_ins = (struct SDP_context *)calloc(1, sizeof(struct SDP_context));
-            strcpy(SDP_context_ins->peer_name, peer_name);
-            strcpy(SDP_context_ins->SDP, SDP);
-            strcpy(SDP_context_ins->candidate, candidate);
-            return SDP_context_ins;
-        }
-    }
-
-}
-
-
-
-void insert_candidate_in_queue(char *peer_name, char *candidate)
-{
-    // check peer_name is existed in SDP_coll,
-    // if yes, update the candidate value
-    // if no, insert 
-
-    bson_error_t error;
-    // check
-    if (peer_name_isExist(SDP_coll, peer_name))
-    {
-        // update candidate value
-        bson_t *update_context = NULL;
-        bson_t *update_query = NULL;
-        update_query = BCON_NEW ("peer_name", peer_name);
-        update_context = BCON_NEW ("$set", "{",
-                "candidate", BCON_UTF8 (candidate),
-                "}");
-        if (!mongoc_collection_update (SDP_coll, MONGOC_UPDATE_NONE, update_query, update_context, NULL, &error)) 
-            printf ("%s\n", error.message);
-
-    }
-    else{
-        // insert
-        bson_oid_t oid;
-        bson_t *insert_context = bson_new();
-        bson_oid_init (&oid, NULL);
-        BSON_APPEND_OID (insert_context, "_id", &oid);
-        BSON_APPEND_UTF8 (insert_context, "peer_name", peer_name);
-        BSON_APPEND_UTF8 (insert_context, "SDP", "");
-        BSON_APPEND_UTF8 (insert_context, "candidate", candidate);
-
-        if (!mongoc_collection_insert (SDP_coll, MONGOC_INSERT_NONE, insert_context, NULL, &error))
-            printf ("%s\n", error.message);
-    }
-
-}
-
-void insert_peer_in_queue(char *peer_name, char*SDP)
-{
-    // check peer_name is existed in SDP_coll,
-    // if yes, update the SDP value
-    // if no, insert 
-
-    bson_error_t error;
-    // check
-    if (peer_name_isExist(SDP_coll, peer_name))
-    {
-        // update candidate value
-        bson_t *update_context = NULL;
-        bson_t *update_query = NULL;
-        update_query = BCON_NEW ("peer_name", peer_name);
-        update_context = BCON_NEW ("$set", "{",
-                "SDP", BCON_UTF8 (SDP),
-                "}");
-        if (!mongoc_collection_update (SDP_coll, MONGOC_UPDATE_NONE, update_query, update_context, NULL, &error)) 
-            printf ("%s\n", error.message);
-
-    }
-    else{
-        // insert
-        bson_oid_t oid;
-        bson_t *insert_context = bson_new();
-        bson_oid_init (&oid, NULL);
-        BSON_APPEND_OID (insert_context, "_id", &oid);
-        BSON_APPEND_UTF8 (insert_context, "peer_name", peer_name);
-        BSON_APPEND_UTF8 (insert_context, "SDP", SDP);
-        BSON_APPEND_UTF8 (insert_context, "candidate", "");
-
-        if (!mongoc_collection_insert (SDP_coll, MONGOC_INSERT_NONE, insert_context, NULL, &error))
-            printf ("%s\n", error.message);
-    }
-
-}
-
 
 static int callback_http(struct libwebsocket_context *context,
         struct libwebsocket *wsi,
@@ -324,8 +202,6 @@ static struct libwebsocket_protocols protocols[] = {
     },
     { NULL, NULL, 0, 0 }
 };
-
-
 
 void sighandler(int sig)
 {
