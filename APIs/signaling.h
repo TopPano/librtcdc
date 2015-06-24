@@ -23,24 +23,6 @@ typedef enum {
     CLIENT_OFF,
 } SESSIONstate;
 
-enum SDP_state {
-    SEND_LOCAL_SDP = 0,
-    SEND_LOCAL_CANDIDATE,
-    RECV_SDP_CONTEXT,
-    REQ_SDP_CONTEXT,
-};
-
-struct SDP_context{
-    char peer_name[NAMESIZE];
-    char SDP[DATASIZE];
-    char candidate[DATASIZE];
-    enum SDP_state state;
-};
-
-struct req_context{
-    char requested_peer_name[NAMESIZE];
-    struct libwebsocket *requester_wsi;
-};
 
 struct conn_info{
     struct libwebsocket *wsi;
