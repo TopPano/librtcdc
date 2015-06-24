@@ -240,5 +240,6 @@ void signal_connect(struct libwebsocket_context *context, volatile int *exit)
     while( n >= 0 && !(*exit)){
         n = libwebsocket_service(context, 20);
     }
-    fprintf(stderr, "SIGNALING: close connect\n");
+    
+    fprintf(stderr, "SIGNALING: close connect\n\n");
 }

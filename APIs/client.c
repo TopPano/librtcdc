@@ -8,6 +8,7 @@ typedef struct rtcdc_data_channel rtcdc_data_channel;
 struct conn_info *signal_conn;
 static volatile int client_exit;
 static rtcdc_peer_connection* offerer;
+static struct libwebsocket_protocols client_protocols[];
 
 
 void on_open_channel(){
@@ -80,7 +81,6 @@ static int callback_client(struct libwebsocket_context *context,
 
         case LWS_CALLBACK_CLOSED:
             fprintf(stderr, "CLIENT: LWS_CALLBACK_CLOSED\n");
-            client_exit = 1;
             break;
 
         case LWS_CALLBACK_CLIENT_WRITEABLE:
@@ -121,8 +121,8 @@ static int callback_client(struct libwebsocket_context *context,
                         rtcdc_parse_offer_sdp(offerer, recvd_session_data->SDP);
                         parse_candidates(offerer, recvd_session_data->candidates);
                         // if success exchange sdp, then close libwebsocket
-                        // TODO deregister the client
                         client_exit = 1;
+                        return -1;
                         break;
                     default:
                         break;
@@ -160,7 +160,6 @@ int main(int argc, char *argv[]){
     offerer = NULL;
     signal_connect(context, &client_exit);
     rtcdc_loop(offerer);
-    // TODO: create data channel
 
     return 0;
 }

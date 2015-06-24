@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <rtcdc.h>
+#include <uv.h>
 #include "signaling.h"
 
 typedef struct rtcdc_peer_connection rtcdc_peer_connection;
@@ -7,7 +8,7 @@ typedef struct rtcdc_data_channel rtcdc_data_channel;
 
 struct conn_info *signal_conn;
 static volatile int fileserver_exit;
-
+static uv_loop_t *fileserver_loop;
 
 void on_message(rtcdc_data_channel* dc, int datatype, void* data, size_t len, void* user_data){
 }
@@ -45,6 +46,13 @@ void parse_candidates(rtcdc_peer_connection *peer, char *candidates)
     }
 
 }
+
+
+void rtcdc_connect(uv_work_t *work){
+    rtcdc_peer_connection* answerer = (rtcdc_peer_connection*)work->data;
+    rtcdc_loop(answerer);
+}
+
 
 static int callback_fileserver(struct libwebsocket_context *context,
         struct libwebsocket *wsi,
@@ -131,7 +139,11 @@ static int callback_fileserver(struct libwebsocket_context *context,
                         free(sent_session_data);
                         
                         // libuv rtcdc_loop()
-                        rtcdc_loop(answerer);
+                        uv_work_t *rtcdc_conn_work = (uv_work_t *)calloc(1, sizeof(uv_work_t));
+                        rtcdc_conn_work->data = (void *)answerer;
+                        uv_queue_work(fileserver_loop, rtcdc_conn_work, rtcdc_connect, NULL);
+
+                        // rtcdc_loop(answerer);
 
                         break;
                     default:
@@ -158,6 +170,8 @@ static struct libwebsocket_protocols fileserver_protocols[] = {
 
 
 int main(int argc, char *argv[]){
+    // initial uv_loop
+    fileserver_loop = uv_default_loop();
     // initial signaling
     const char *address = "140.112.90.37";
     int port = 7681;

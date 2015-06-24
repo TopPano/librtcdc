@@ -18,13 +18,14 @@ static mongoc_collection_t *peer_coll;
 static mongoc_collection_t *SDP_coll;
 static mongoc_collection_t *req_coll;
 
-void delete_req(char *requested_peer_name)
+void delete_peer(struct libwebsocket *peer_wsi)
 {
     bson_t *doc = bson_new();
     bson_error_t error;
-    BSON_APPEND_UTF8 (doc, "requested_peer_name", requested_peer_name);
+    intptr_t wsi_ptr = (intptr_t)peer_wsi;
+    BSON_APPEND_INT32 (doc, "wsi", wsi_ptr);
 
-    if (!mongoc_collection_remove (req_coll, MONGOC_DELETE_SINGLE_REMOVE, doc, NULL, &error)) 
+    if (!mongoc_collection_remove (peer_coll, MONGOC_DELETE_SINGLE_REMOVE, doc, NULL, &error)) 
     {
         printf ("%s\n", error.message);
     }
@@ -237,6 +238,8 @@ static int callback_SDP(struct libwebsocket_context *context,
             break;
         case LWS_CALLBACK_CLOSED:
             fprintf(stderr, "SIGNAL_SERVER: LWS_CALLBACK_CLOSED\n");
+            // deregister the peer name and peer wsi in mongoDB
+            delete_peer(wsi);
             break;
         case LWS_CALLBACK_RECEIVE:
             recvd_session_data = (struct signal_session_data_t *)in;
