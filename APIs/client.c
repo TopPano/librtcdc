@@ -1,11 +1,13 @@
 #include <stdio.h>
+#include <string.h>
+#include <jansson.h>
 #include <rtcdc.h>
 #include "signaling.h"
 
 typedef struct rtcdc_peer_connection rtcdc_peer_connection;
 typedef struct rtcdc_data_channel rtcdc_data_channel;
 
-struct conn_info *signal_conn;
+struct conn_info_t *signal_conn;
 static volatile int client_exit;
 static rtcdc_peer_connection* offerer;
 static struct libwebsocket_protocols client_protocols[];
@@ -41,7 +43,7 @@ void on_candidate(rtcdc_peer_connection *peer, char *candidate, void *user_data 
 void on_connect(rtcdc_peer_connection *peer, void *user_data){
     fprintf(stderr, "CLIENT: rtcdc on connect!\n");
     fprintf(stderr, "CLIENT: rtcdc create data channel\n");
-    rtcdc_data_channel *offerer_dc = rtcdc_create_data_channel(peer, "Demo Channel", "", on_open_channel, on_message, NULL, NULL); 
+    rtcdc_data_channel *offerer_dc = rtcdc_create_data_channel(peer, "Demo Channel", "", on_open_channel, NULL, NULL, NULL); 
     if(offerer_dc == NULL){
         fprintf(stderr, "CLIENT: fail to create rtcdc data channel\n"); 
     }
@@ -68,6 +70,16 @@ static int callback_client(struct libwebsocket_context *context,
     int result;
     char *client_SDP = NULL;
     char *client_candidates = NULL;
+
+    
+    json_t *sent_session_JData = NULL;
+    json_t *recvd_session_JData = NULL;
+    json_t *JArray =NULL;
+    json_t *JInt = NULL;
+    json_error_t *err = NULL;
+    char *session_SData = NULL;
+    int metadata_type, libwebsocket_err;
+
     switch (reason) {
         case LWS_CALLBACK_CLIENT_ESTABLISHED:
             fprintf(stderr, "CLIENT: LWS_CALLBACK_CLIENT_ESTABLISHED\n");

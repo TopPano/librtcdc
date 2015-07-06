@@ -1,14 +1,12 @@
 #include <syslog.h>
 #include <signal.h>
 #include <string.h>
-#include <pthread.h>
 #include "signaling.h"
 
 static struct libwebsocket_context *context;
 static volatile int force_exit = 0;
 static struct signal_session_data_t* signal_session_data;
 static struct SDP_context *recvd_SDP;
-pthread_mutex_t mutex;
 
 char *signal_getline(char **string)
 {
@@ -29,7 +27,7 @@ char *signal_getline(char **string)
     return line;
 }
 
-struct conn_info* signal_initial(const char *address, int port, struct libwebsocket_protocols protocols[], char *protocol_name)
+struct conn_info_t* signal_initial(const char *address, int port, struct libwebsocket_protocols protocols[], char *protocol_name)
 {
     struct libwebsocket *wsi;
     int use_ssl = 0;
@@ -58,7 +56,7 @@ struct conn_info* signal_initial(const char *address, int port, struct libwebsoc
     info.uid = -1;
     info.options = opts;
 
-    struct conn_info* SDP_conn = (struct conn_info *)calloc(1, sizeof(struct conn_info)); 
+    struct conn_info_t* SDP_conn = (struct conn_info_t *)calloc(1, sizeof(struct conn_info_t)); 
     context = libwebsocket_create_context(&info);
     if (context == NULL) {
         lwsl_err("libwebsocket_create_context failed\n");
@@ -84,7 +82,7 @@ bail:
 }
 
 
-void signal_close(struct conn_info* conn)
+void signal_close(struct conn_info_t* conn)
 {
     fprintf(stderr, "close the connect\n");
     struct libwebsocket_context *context = conn->context;
@@ -93,6 +91,21 @@ void signal_close(struct conn_info* conn)
     force_exit = 1;
     libwebsocket_cancel_service(context);
     libwebsocket_context_destroy(context);
+}
+
+
+void uv_signal_connect(uv_work_t *work)
+{
+    fprintf(stderr, "SIGNALING: waiting for connect...\n");
+    int n = 0;
+    struct conn_info_t* conn_info = (struct conn_info_t *)work->data;
+    struct libwebsocket_context *context = conn_info->context;
+    volatile uint8_t *exit = conn_info->exit;
+    while( n >= 0 && !(*exit)){
+        n = libwebsocket_service(context, 20);
+    }
+    
+    fprintf(stderr, "SIGNALING: close connect\n\n");
 }
 
 
