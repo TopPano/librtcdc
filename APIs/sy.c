@@ -99,7 +99,7 @@ struct sy_session_t *sy_default_session()
 }
 
 
-uint8_t sy_init(struct sy_session_t *sy_session, char *repo_name, char *api_key, char *token)
+uint8_t sy_init(struct sy_session_t *sy_session, char *repo_name, char *local_repo_path, char *api_key, char *token)
 {
     const char *metadata_server_IP = "140.112.90.37";
     uint16_t metadata_server_port = 7681;
@@ -165,6 +165,19 @@ uint8_t sy_init(struct sy_session_t *sy_session, char *repo_name, char *api_key,
     /* return METADATAtype */
     return SY_INIT_OK;
 }
+
+
+uint8_t sy_connect(struct sy_session_t *sy_session, char *URI_code, char *apikey, char *token)
+{
+    
+}
+
+uint8_t sy_upload(struct sy_session_t *sy_session)
+{
+
+}
+
+
 
 int main(int argc, char *argv[]){
 
