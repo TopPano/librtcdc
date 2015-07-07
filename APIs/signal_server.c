@@ -122,21 +122,21 @@ static int callback_SDP(struct libwebsocket_context *context,
         case LWS_CALLBACK_RECEIVE:
             recvd_session_data = (struct signal_session_data_t *)in;
             switch (recvd_session_data->type){
-                case FILESERVER_REGISTER_t:
-                    fprintf(stderr, "SIGNAL_SERVER: receive FILESERVER_REGISTER_t\n");
+                case FS_REGISTER_t:
+                    fprintf(stderr, "SIGNAL_SERVER: receive FS_REGISTER_t\n");
                     // insert the fileserver info in mongoDB
                     insert_peer("toppano://server1.tw", wsi);
                     
-                    //send FILESERVER_REGISTER_OK_t back to file server 
+                    //send FS_REGISTER_OK_t back to file server 
                     sent_session_data = (struct signal_session_data_t *)calloc(1, sizeof(struct signal_session_data_t));
-                    sent_session_data->type = FILESERVER_REGISTER_OK_t;
+                    sent_session_data->type = FS_REGISTER_OK_t;
                     // the file server dns is assigned by signaling server
                     strcpy(sent_session_data->fileserver_dns, "toppano://server1.tw");
                     result = libwebsocket_write(wsi, (char *)sent_session_data, sizeof(struct signal_session_data_t), LWS_WRITE_TEXT);
                     free(sent_session_data);
                     break;
      
-                case CLIENT_SDP_t:
+                case SY_SDP:
                     fprintf(stderr, "SIGNAL_SERVER: receive CLIENT_SDP_t\n");
                     // whenever receiving client sdp, send to a fileserver 
                     // which the fileserver peer name is assign by signaling server
@@ -146,7 +146,7 @@ static int callback_SDP(struct libwebsocket_context *context,
                     fileserver_wsi = get_wsi("toppano://server1.tw");
                     // transfer to the file server
                     sent_session_data = (struct signal_session_data_t *)calloc(1, sizeof(struct signal_session_data_t));
-                    sent_session_data->type = CLIENT_SDP_t;
+                    sent_session_data->type = SY_SDP;
                     strcpy(sent_session_data->SDP, recvd_session_data->SDP);
                     strcpy(sent_session_data->candidates, recvd_session_data->candidates);
                     strcpy(sent_session_data->fileserver_dns, "toppano://server1.tw");
@@ -155,13 +155,13 @@ static int callback_SDP(struct libwebsocket_context *context,
                     free(sent_session_data);
                     break;
 
-                 case FILESERVER_SDP_t:
-                    fprintf(stderr, "SIGNAL_SERVER: receive FILESERVER_SDP_t\n");
+                 case FS_SDP:
+                    fprintf(stderr, "SIGNAL_SERVER: receive FS_SDP\n");
                     
                     client_wsi = get_wsi(recvd_session_data->client_dns);
                     // transfer to the file server
                     sent_session_data = (struct signal_session_data_t *)calloc(1, sizeof(struct signal_session_data_t));
-                    sent_session_data->type = FILESERVER_SDP_t;
+                    sent_session_data->type = FS_SDP;
                     strcpy(sent_session_data->SDP, recvd_session_data->SDP);
                     strcpy(sent_session_data->candidates, recvd_session_data->candidates);
                     strcpy(sent_session_data->fileserver_dns, recvd_session_data->fileserver_dns);

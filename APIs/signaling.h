@@ -30,15 +30,9 @@ typedef enum {
     SY_DOWNLOAD,
     SY_DOWNLOAD_OK,
     SY_SESSION_NOT_EXIST,
+    SY_SDP,
+    FS_SDP,
 } METADATAtype;
-
-
-typedef enum {
-    FILESERVER_REGISTER_t = 5,
-    FILESERVER_REGISTER_OK_t,
-    FILESERVER_SDP_t,
-    CLIENT_SDP_t,
-} SIGNALDATAtype;
 
 
 typedef enum {
@@ -48,7 +42,6 @@ typedef enum {
     SIGNALSERVER_RECV_REGISTER,
     CLIENT_INITIAL,
     CLIENT_WAIT,
-
 } SESSIONstate;
 
 
@@ -72,9 +65,9 @@ struct conn_info_t{
     volatile uint8_t *exit;
 };
 
-
+// for signaling server
 struct signal_session_data_t{
-    SIGNALDATAtype type;
+    METADATAtype type;
     char fileserver_dns[NAMESIZE];
     char client_dns[NAMESIZE];
     char SDP[DATASIZE];
