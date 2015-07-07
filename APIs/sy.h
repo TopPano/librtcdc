@@ -23,6 +23,6 @@ struct sy_session_t *sy_default_session();
 
 uint8_t sy_init(struct sy_session_t *sy_session, char *repo_name, char *local_repo_path, char *apikey, char *token);
 
-uint8_t sy_connect(struct sy_session_t *sy_session, char *URI_code, char *apikey, char *token);
+uint8_t sy_connect(struct sy_session_t *sy_session, char *URI_code, char *local_repo_path, char *apikey, char *token);
 
 uint8_t sy_upload(struct sy_session_t *sy_session);

@@ -52,8 +52,13 @@ uint8_t insert_fileserver(char *fileserver_name, struct libwebsocket *fileserver
     return 1;
 }
 
-uint8_t insert_session(char *session_id, struct libwebsocket *fileserver_wsi, struct libwebsocket *client_wsi, char *repo_name, METADATAtype state)
+char *insert_session(struct libwebsocket *fileserver_wsi, struct libwebsocket *client_wsi, char *repo_name, METADATAtype state)
 {
+    char *session_id = (char *)calloc(1, 25);
+    bson_oid_t oid;
+    bson_oid_init (&oid, NULL);
+    bson_oid_to_string(&oid, session_id);
+
     bson_t *doc = bson_new();
     bson_error_t error;
 
@@ -69,9 +74,9 @@ uint8_t insert_session(char *session_id, struct libwebsocket *fileserver_wsi, st
 #ifdef DEBUG_META
         fprintf (stderr, "METADATA_SERVER: insert_session(): %s\n", error.message);
 #endif
-        return 0;
+        return NULL;
     }
-    return 1;
+    return session_id;
 }
 
 
@@ -173,7 +178,43 @@ struct session_info_t *get_session(char *session_id)
     return session;
 }
 
+struct URI_info_t *get_URI(char *URI_code)
+{
+    mongoc_cursor_t *cursor = NULL;
+    const bson_t *find_context = NULL ;
+    bson_t *find_query = bson_new();
+    bson_t *proj = bson_new();
+    BSON_APPEND_UTF8(find_query, "URI_code", URI_code);
+    BSON_APPEND_BOOL(proj, "fileserver_wsi", true);
+    BSON_APPEND_BOOL(proj, "repo_name", true);
+    cursor = mongoc_collection_find (filesys_coll, MONGOC_QUERY_NONE, 0, 0, 0, find_query, proj, NULL);
 
+    struct URI_info_t *URI = NULL;
+    if ( mongoc_cursor_next(cursor, &find_context) == 0){
+#ifdef DEBUG_META
+        fprintf(stderr, "METADATA_SERVER: URI_code %s does not exist in db.filesys\n", URI_code);
+#endif
+        return NULL;
+    }
+    else{
+        URI = (struct URI_info_t *)calloc(1, sizeof(struct URI_info_t));
+        bson_iter_t iter, value;
+        bson_iter_init(&iter, find_context);
+        bson_iter_find_descendant(&iter, "fileserver_wsi", &value);
+        BSON_ITER_HOLDS_INT32(&value);
+        intptr_t fileserver_wsi_ptr = (intptr_t) bson_iter_int32(&value);
+        URI->fileserver_wsi = (struct libwebsocket *)fileserver_wsi_ptr;
+       
+        bson_iter_init(&iter, find_context);
+        bson_iter_find_descendant(&iter, "repo_name", &value);
+        BSON_ITER_HOLDS_UTF8(&value);
+        uint32_t length;
+        strcpy(URI->repo_name, (char *)bson_iter_utf8(&value, &length));
+        
+        strcpy(URI->URI_code, URI_code);
+    }
+    return URI;
+}
 
 struct libwebsocket* get_wsi(char *fileserver_name)
 {
@@ -276,10 +317,7 @@ static int callback_SDP(struct libwebsocket_context *context,
                             /* Oauth */
 
                             /* Insert (client_wsi, fileserver_wsi, repo_name, state, session_id) into session table */
-                            char session_id[25], *repo_name;
-                            bson_oid_t oid;
-                            bson_oid_init (&oid, NULL);
-                            bson_oid_to_string(&oid, session_id);
+                            char *session_id, *repo_name;
                             /* TODO: exception when  "toppano://server1.tw" not exist */
                             struct libwebsocket *fileserver_wsi = get_wsi("toppano://server1.tw");
                             if(fileserver_wsi == NULL)
@@ -289,10 +327,9 @@ static int callback_SDP(struct libwebsocket_context *context,
                             }
                             struct libwebsocket *client_wsi = wsi;
                             json_unpack(recvd_session_JData, "{s:s}", "repo_name", &repo_name);
-                            if(insert_session(session_id, fileserver_wsi, client_wsi, repo_name, SY_INIT) == 0){
+                            if((session_id = insert_session(fileserver_wsi, client_wsi, repo_name, SY_INIT)) == NULL){
                                  /* TODO: if insert failed, what to do? */
                             }
-
                             /* send SY_INIT & repo_name & session_id to the fileserver*/
                             sent_session_JData = json_object();
                             json_object_set_new(sent_session_JData, "metadata_type", json_integer(SY_INIT));
@@ -356,6 +393,52 @@ static int callback_SDP(struct libwebsocket_context *context,
                             free(session_SData);
                             break;
                         }
+                
+                    case SY_CONNECT:
+                        {
+                            fprintf(stderr, "METADATA_SERVER: receive SY_CONNECT\n");
+                            /* TODO: Oauth */
+                            
+                            char *session_id, *URI_code, *repo_name;
+                            struct libwebsocket *fileserver_wsi, *client_wsi;
+                            /* lookup the URI_code existed, and get URI_info_t */
+
+                            json_unpack(recvd_session_JData, "{s:s}", "URI_code", &URI_code);
+                            struct URI_info_t *URI;
+                            /* if the URI_code not exist, send SY_REPO_NOT_EXIST and break */
+                            if((URI = get_URI(URI_code)) == NULL)
+                            {
+                                fprintf(stderr, "METADATA_SERVER: URI %s not exist\n", URI_code);
+                                /* TODO: send SY_REPO_NOT_EXIST */
+                                break;
+                            }
+                            
+                            fileserver_wsi = URI->fileserver_wsi;
+                            client_wsi = wsi;
+                            /* Insert (client_wsi, fileserver_wsi, repo_name, state, session_id) into session table */
+                            if((session_id = insert_session(fileserver_wsi, client_wsi, URI->repo_name, SY_CONNECT)) == NULL)
+                            {
+                                 /* TODO: if insert failed, what to do? */
+                            }
+
+                             
+                            /* send SY_CONNECT_OK & session_id  back to client*/
+                            sent_session_JData = json_object();
+                            json_object_set_new(sent_session_JData, "metadata_type", json_integer(SY_CONNECT_OK));
+                            json_object_set_new(sent_session_JData, "session_id", json_string(session_id));
+                            session_SData = json_dumps(sent_session_JData, 0);
+                            lws_err = libwebsocket_write(client_wsi, (void *)session_SData, strlen(session_SData), LWS_WRITE_TEXT);
+#ifdef DEBUG_META
+                            if(lws_err<0)
+                                fprintf(stderr, "METADATA_SERVER: send SY_CONNECT_OK to client fail\n");
+                            else
+                                fprintf(stderr, "METADATA_SERVER: send SY_CONNECT_OK to client\n");
+#endif
+                            free(recvd_session_JData);   
+                            free(sent_session_JData);
+                            free(session_SData);
+                            break;
+                        }    
                     default:
                         break;
                 }

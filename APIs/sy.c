@@ -1,10 +1,12 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
+#include <unistd.h>
 #include <jansson.h>
 #include <rtcdc.h>
 #include "signaling.h"
 #include "sy.h"
+
 typedef struct rtcdc_peer_connection rtcdc_peer_connection;
 typedef struct rtcdc_data_channel rtcdc_data_channel;
 static uv_loop_t *main_loop;
@@ -53,7 +55,7 @@ static int callback_client(struct libwebsocket_context *context,
                 }
                 else
                     fprintf(stderr, "SYCLIENT: sent_lws_JData is NULL\n");
-            break;
+                break;
             }
         case LWS_CALLBACK_CLIENT_RECEIVE:
             {
@@ -69,6 +71,11 @@ static int callback_client(struct libwebsocket_context *context,
                         fprintf(stderr,"SYCLIENT: receive SY_INIT_OK\n");
                         recvd_lws_JData = recvd_session_JData;
                         break;
+                    case SY_CONNECT_OK:
+                        fprintf(stderr,"SYCLIENT: receive SY_CONNECT_OK\n");
+                        recvd_lws_JData = recvd_session_JData;
+                        break;
+
                     default:
                         break;
                 }
@@ -143,6 +150,7 @@ uint8_t sy_init(struct sy_session_t *sy_session, char *repo_name, char *local_re
     /* extract the URI_code & session_id and assign to sy_session */
 
     /* construct sy_session */
+    /* TODO: not sure if preserving the wsi and context is necessary? */
     sy_session->wsi = wsi;
     sy_session->context = context;
     strcpy(sy_session->repo_name, repo_name);
@@ -152,9 +160,11 @@ uint8_t sy_init(struct sy_session_t *sy_session, char *repo_name, char *local_re
 
     sy_session->session_id = (char *)calloc(1, strlen(session_id));
     sy_session->URI_code = (char *)calloc(1, strlen(URI_code));
+    sy_session->local_repo_path = (char *)calloc(1, strlen(local_repo_path));
     strcpy(sy_session->session_id, session_id);
     strcpy(sy_session->URI_code, URI_code);
-    
+    strcpy(sy_session->local_repo_path, local_repo_path);
+
     /* free memory */
     free(recvd_lws_JData);
     free(sent_lws_JData); 
@@ -167,9 +177,78 @@ uint8_t sy_init(struct sy_session_t *sy_session, char *repo_name, char *local_re
 }
 
 
-uint8_t sy_connect(struct sy_session_t *sy_session, char *URI_code, char *apikey, char *token)
+uint8_t sy_connect(struct sy_session_t *sy_session, char *URI_code, char *local_repo_path, char *api_key, char *token)
 {
-    
+
+    const char *metadata_server_IP = "140.112.90.37";
+    uint16_t metadata_server_port = 7681;
+    uint8_t metadata_type;
+    char *session_id;
+    struct conn_info_t *metadata_conn;
+    metadata_conn = signal_initial(metadata_server_IP, metadata_server_port, client_protocols, "client-protocol");
+    struct libwebsocket_context *context = metadata_conn->context;
+    struct libwebsocket *wsi = metadata_conn->wsi;
+    volatile uint8_t client_exit = 0;
+    metadata_conn->exit = &client_exit;
+
+    /* allocate a uv to run signal_connect() */
+    main_loop = uv_default_loop();
+    uv_work_t work;
+    work.data = (void *)metadata_conn;
+    uv_queue_work(main_loop, &work, uv_signal_connect, NULL);
+    sent_lws_JData = json_object();
+    json_object_set_new(sent_lws_JData, "metadata_type", json_integer(SY_CONNECT));
+    json_object_set_new(sent_lws_JData, "URI_code", json_string(URI_code));
+    json_object_set_new(sent_lws_JData, "api_key", json_string(api_key));
+    json_object_set_new(sent_lws_JData, "token", json_string(token));
+
+    recvd_lws_JData = NULL;
+
+    usleep(100000);
+    libwebsocket_callback_on_writable(context, wsi);
+
+    /* wait for receiving SY_CONNECT_OK */
+    while(1){
+        if(recvd_lws_JData != NULL){
+            json_unpack(recvd_lws_JData, "{s:i}", "metadata_type", &metadata_type);
+            if(metadata_type == SY_CONNECT_OK){
+                /* TODO:sy_init success, keep or close the libwebsocket connection?*/
+                client_exit = 1;
+                break;
+            }
+        }
+        usleep(1000);
+    }
+    /* extract the URI_code & session_id and assign to sy_session */
+
+    /* construct sy_session */
+    /* TODO: not sure if preserving the wsi and context is necessary? */
+    sy_session->wsi = wsi;
+    sy_session->context = context;
+
+    /* TODO: is the repo_name necessary? */
+    //strcpy(sy_session->repo_name, repo_name);
+
+    json_unpack(recvd_lws_JData, "{s:s}", "session_id", &(session_id));
+    json_unpack(recvd_lws_JData, "{s:s}", "URI_code", &(URI_code));
+
+    sy_session->session_id = (char *)calloc(1, strlen(session_id));
+    sy_session->URI_code = (char *)calloc(1, strlen(URI_code));
+    sy_session->local_repo_path = (char *)calloc(1, strlen(local_repo_path));
+    strcpy(sy_session->session_id, session_id);
+    strcpy(sy_session->URI_code, URI_code);
+    strcpy(sy_session->local_repo_path, local_repo_path);
+
+    /* free memory */
+    free(recvd_lws_JData);
+    free(sent_lws_JData); 
+    recvd_lws_JData = NULL;
+    sent_lws_JData = NULL;
+    uv_run(main_loop, UV_RUN_DEFAULT);
+
+    /* return METADATAtype */
+    return SY_CONNECT_OK;
+
 }
 
 uint8_t sy_upload(struct sy_session_t *sy_session)
@@ -183,9 +262,22 @@ int main(int argc, char *argv[]){
 
     struct sy_session_t *sy_session = sy_default_session();
     char *repo_name = "hhh";
-    sy_init(sy_session, repo_name, "apikey", "token");
-    
-    fprintf(stderr, "sy_init finish\nsession_id:%s, URI_code:%s\n", sy_session->session_id, sy_session->URI_code);
+    char local_repo_path[128];
+    getcwd(local_repo_path, sizeof(local_repo_path));
+
+    /* 
+       if(sy_init(sy_session, repo_name, local_repo_path, "apikey", "token") == SY_INIT_OK)
+       fprintf(stderr, "sy_init finish\nsession_id:%s, URI_code:%s\n", sy_session->session_id, sy_session->URI_code);
+       else
+       fprintf(stderr, "sy_init failed");
+       */
+
+    char *URI_code = "559bce335ad78977752bfb34";
+    if(sy_connect(sy_session, URI_code, local_repo_path, "apikey", "token") == SY_CONNECT_OK)
+        fprintf(stderr, "sy_connect finish\nsession_id:%s, URI_code:%s\n", sy_session->session_id, sy_session->URI_code);
+    else
+        fprintf(stderr, "sy_connect failed");
+
 
     return 0;
 }
