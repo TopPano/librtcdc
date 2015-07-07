@@ -30,7 +30,6 @@ typedef enum {
     SY_DOWNLOAD,
     SY_DOWNLOAD_OK,
     SY_SESSION_NOT_EXIST,
-
 } METADATAtype;
 
 
@@ -50,7 +49,6 @@ typedef enum {
     CLIENT_INITIAL,
     CLIENT_WAIT,
 
-    CLIENT_OFF,
 } SESSIONstate;
 
 

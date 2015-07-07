@@ -7,7 +7,7 @@
 #include "sy.h"
 typedef struct rtcdc_peer_connection rtcdc_peer_connection;
 typedef struct rtcdc_data_channel rtcdc_data_channel;
-
+static uv_loop_t *main_loop;
 /* this design may be a problem */
 static json_t *sent_lws_JData, *recvd_lws_JData;
 
@@ -92,6 +92,13 @@ static struct libwebsocket_protocols client_protocols[] = {
 };
 
 
+struct sy_session_t *sy_default_session()
+{
+    struct sy_session_t *sy_session = (struct sy_session_t *)calloc(1, sizeof(struct sy_session_t));
+    return sy_session;
+}
+
+
 uint8_t sy_init(struct sy_session_t *sy_session, char *repo_name, char *api_key, char *token)
 {
     const char *metadata_server_IP = "140.112.90.37";
@@ -106,12 +113,10 @@ uint8_t sy_init(struct sy_session_t *sy_session, char *repo_name, char *api_key,
     metadata_conn->exit = &client_exit;
 
     /* allocate a uv to run signal_connect() */
-    uv_loop_t *main_loop = uv_default_loop();
+    main_loop = uv_default_loop();
     uv_work_t work;
     work.data = (void *)metadata_conn;
     uv_queue_work(main_loop, &work, uv_signal_connect, NULL);
-    
-
     sent_lws_JData = json_object();
     json_object_set_new(sent_lws_JData, "metadata_type", json_integer(SY_INIT));
     json_object_set_new(sent_lws_JData, "repo_name", json_string(repo_name));
@@ -120,7 +125,7 @@ uint8_t sy_init(struct sy_session_t *sy_session, char *repo_name, char *api_key,
 
     recvd_lws_JData = NULL;
 
-    usleep(100);
+    usleep(100000);
     libwebsocket_callback_on_writable(context, wsi);
 
     /* wait for receiving SY_INIT_OK */
@@ -133,29 +138,22 @@ uint8_t sy_init(struct sy_session_t *sy_session, char *repo_name, char *api_key,
                 break;
             }
         }
-        usleep(100);
+        usleep(1000);
     }
     /* extract the URI_code & session_id and assign to sy_session */
 
     /* construct sy_session */
-    sy_session = (struct sy_session_t *)calloc(1, sizeof(struct sy_session_t));
     sy_session->wsi = wsi;
     sy_session->context = context;
     strcpy(sy_session->repo_name, repo_name);
 
-
     json_unpack(recvd_lws_JData, "{s:s}", "session_id", &(session_id));
     json_unpack(recvd_lws_JData, "{s:s}", "URI_code", &(URI_code));
 
-    fprintf(stderr, "sy_init finish\n session_id:%s, URI_code:%s\n", session_id, URI_code);
     sy_session->session_id = (char *)calloc(1, strlen(session_id));
     sy_session->URI_code = (char *)calloc(1, strlen(URI_code));
     strcpy(sy_session->session_id, session_id);
     strcpy(sy_session->URI_code, URI_code);
-    fgetc(stdin);
-    
-    fprintf(stderr, "sy_init finish\n session_id:%s, URI_code:%s\n", sy_session->session_id, sy_session->URI_code);
-    fgetc(stdin);
     
     /* free memory */
     free(recvd_lws_JData);
@@ -164,21 +162,17 @@ uint8_t sy_init(struct sy_session_t *sy_session, char *repo_name, char *api_key,
     sent_lws_JData = NULL;
     uv_run(main_loop, UV_RUN_DEFAULT);
 
-    fprintf(stderr, "sy_init finish\n session_id:%s, URI_code:%s\n", sy_session->session_id, sy_session->URI_code);
-    
-    fgetc(stdin)
-
     /* return METADATAtype */
     return SY_INIT_OK;
 }
 
 int main(int argc, char *argv[]){
 
-    struct sy_session_t *sy_session = NULL;
+    struct sy_session_t *sy_session = sy_default_session();
     char *repo_name = "hhh";
     sy_init(sy_session, repo_name, "apikey", "token");
     
-    fprintf(stderr, " session_id:%s, URI_code:\n", sy_session->session_id, sy_session->URI_code);
+    fprintf(stderr, "sy_init finish\nsession_id:%s, URI_code:%s\n", sy_session->session_id, sy_session->URI_code);
 
     return 0;
 }

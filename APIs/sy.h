@@ -41,5 +41,6 @@ struct sy_session_t{
 };
 
 /* sy_init return the URI_code, which is the repository location */ 
+struct sy_session_t *sy_default_session();
 uint8_t sy_init(struct sy_session_t *sy_session, char *repo_name, char *apikey, char *token);
 void sy_connect(struct sy_session_t *sy_session, uint8_t URI_code, char *apikey, char *token);
