@@ -50,7 +50,7 @@ static int callback_client(struct libwebsocket_context *context,
                     else 
                         fprintf(stderr, "SYCLIENT: %s sent\n", session_SData);
 #endif
-                    json_decref(sent_lws_JData);
+                    // json_decref(sent_lws_JData);
                     sent_lws_JData = NULL;
                 }
                 else
@@ -70,10 +70,12 @@ static int callback_client(struct libwebsocket_context *context,
                     case SY_INIT_OK:
                         fprintf(stderr,"SYCLIENT: receive SY_INIT_OK\n");
                         recvd_lws_JData = recvd_session_JData;
+                        return -1;
                         break;
                     case SY_CONNECT_OK:
                         fprintf(stderr,"SYCLIENT: receive SY_CONNECT_OK\n");
                         recvd_lws_JData = recvd_session_JData;
+
                         break;
 
                     default:
@@ -151,8 +153,10 @@ uint8_t sy_init(struct sy_session_t *sy_session, char *repo_name, char *local_re
 
     /* construct sy_session */
     /* TODO: not sure if preserving the wsi and context is necessary? */
-    sy_session->wsi = wsi;
-    sy_session->context = context;
+
+//    sy_session->wsi = wsi;
+//    sy_session->context = context;
+
     strcpy(sy_session->repo_name, repo_name);
 
     json_unpack(recvd_lws_JData, "{s:s}", "session_id", &(session_id));
@@ -172,6 +176,8 @@ uint8_t sy_init(struct sy_session_t *sy_session, char *repo_name, char *local_re
     sent_lws_JData = NULL;
     uv_run(main_loop, UV_RUN_DEFAULT);
 
+    free(metadata_conn);
+
     /* return METADATAtype */
     return SY_INIT_OK;
 }
@@ -185,12 +191,13 @@ uint8_t sy_connect(struct sy_session_t *sy_session, char *URI_code, char *local_
     uint8_t metadata_type;
     char *session_id;
     struct conn_info_t *metadata_conn;
+
     metadata_conn = signal_initial(metadata_server_IP, metadata_server_port, client_protocols, "client-protocol");
+
     struct libwebsocket_context *context = metadata_conn->context;
     struct libwebsocket *wsi = metadata_conn->wsi;
     volatile uint8_t client_exit = 0;
     metadata_conn->exit = &client_exit;
-
     /* allocate a uv to run signal_connect() */
     main_loop = uv_default_loop();
     uv_work_t work;
@@ -246,6 +253,7 @@ uint8_t sy_connect(struct sy_session_t *sy_session, char *URI_code, char *local_
     sent_lws_JData = NULL;
     uv_run(main_loop, UV_RUN_DEFAULT);
 
+    free(metadata_conn);
     /* return METADATAtype */
     return SY_CONNECT_OK;
 
@@ -265,14 +273,19 @@ int main(int argc, char *argv[]){
     char local_repo_path[128];
     getcwd(local_repo_path, sizeof(local_repo_path));
 
-    /* 
-       if(sy_init(sy_session, repo_name, local_repo_path, "apikey", "token") == SY_INIT_OK)
+    if(sy_init(sy_session, repo_name, local_repo_path, "apikey", "token") == SY_INIT_OK)
        fprintf(stderr, "sy_init finish\nsession_id:%s, URI_code:%s\n", sy_session->session_id, sy_session->URI_code);
-       else
+    else
        fprintf(stderr, "sy_init failed");
-       */
+    
+    free(sy_session);
+    fgetc(stdin);
 
-    char *URI_code = "559bce335ad78977752bfb34";
+
+    char *URI_code = (char *)calloc(1, strlen(sy_session->URI_code));
+    strcpy(URI_code, sy_session->URI_code);
+    
+    sy_session = sy_default_session();
     if(sy_connect(sy_session, URI_code, local_repo_path, "apikey", "token") == SY_CONNECT_OK)
         fprintf(stderr, "sy_connect finish\nsession_id:%s, URI_code:%s\n", sy_session->session_id, sy_session->URI_code);
     else

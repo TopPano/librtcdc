@@ -3,11 +3,6 @@
 #include <string.h>
 #include "signaling.h"
 
-static struct libwebsocket_context *context;
-static volatile int force_exit = 0;
-static struct signal_session_data_t* signal_session_data;
-static struct SDP_context *recvd_SDP;
-
 char *signal_getline(char **string)
 {
     char *line = (char *)calloc(1, 128*sizeof(char));
@@ -36,6 +31,7 @@ struct conn_info_t* signal_initial(const char *address, int port, struct libwebs
     int opts = 0;
 
     /*syslog setting*/
+
     int syslog_options = LOG_PID | LOG_PERROR; 
     int debug_level = 7;
     setlogmask(LOG_UPTO (LOG_DEBUG));
@@ -62,6 +58,7 @@ struct conn_info_t* signal_initial(const char *address, int port, struct libwebs
         lwsl_err("libwebsocket_create_context failed\n");
         goto bail;
     }
+
     SDP_conn->context = context;
 
     wsi = libwebsocket_client_connect(context, address, port, use_ssl, "/", 
@@ -82,16 +79,6 @@ bail:
 }
 
 
-void signal_close(struct conn_info_t* conn)
-{
-    fprintf(stderr, "close the connect\n");
-    struct libwebsocket_context *context = conn->context;
-    struct libwebsocket *wsi = conn->wsi;
-    usleep(80000);
-    force_exit = 1;
-    libwebsocket_cancel_service(context);
-    libwebsocket_context_destroy(context);
-}
 
 
 void uv_signal_connect(uv_work_t *work)
@@ -104,7 +91,6 @@ void uv_signal_connect(uv_work_t *work)
     while( n >= 0 && !(*exit)){
         n = libwebsocket_service(context, 20);
     }
-    
     fprintf(stderr, "SIGNALING: close connect\n\n");
 }
 
@@ -116,6 +102,5 @@ void signal_connect(struct libwebsocket_context *context, volatile int *exit)
     while( n >= 0 && !(*exit)){
         n = libwebsocket_service(context, 20);
     }
-    
     fprintf(stderr, "SIGNALING: close connect\n\n");
 }
