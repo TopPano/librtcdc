@@ -181,7 +181,7 @@ static struct libwebsocket_protocols fileserver_protocols[] = {
     {
         "fileserver-protocol",
         callback_fileserver,
-        sizeof(struct signal_session_data_t),
+        1024,
         10,
     },
     { NULL, NULL, 0, 0 }

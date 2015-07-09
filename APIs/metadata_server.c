@@ -462,13 +462,13 @@ static struct libwebsocket_protocols protocols[] = {
     {
         "fileserver-protocol",
         callback_SDP,
-        sizeof(struct signal_session_data_t),
+        1024,
         10,
     },
     {
         "client-protocol",
         callback_SDP,
-        sizeof(struct signal_session_data_t),
+        1024,
         10,
     },
     { NULL, NULL, 0, 0 }

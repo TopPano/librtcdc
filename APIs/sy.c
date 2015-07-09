@@ -94,7 +94,7 @@ static struct libwebsocket_protocols client_protocols[] = {
     {
         "client-protocol",
         callback_client,
-        sizeof(struct signal_session_data_t), /* TODO: the size may be a trouble */
+        1024, /* TODO: the size may be a trouble */
         10,
     },
     { NULL, NULL, 0, 0 }

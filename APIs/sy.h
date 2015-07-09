@@ -4,11 +4,12 @@
 #include <rtcdc.h>
 #define NAMESIZE 32
 
+/* for signal_server
 struct sy_conn_info_t{
     char repo_name[NAMESIZE];
     struct rtcdc_peer_connection *peer;
 };
-
+*/
 struct sy_session_t{
     char *session_id;
     char *URI_code;
