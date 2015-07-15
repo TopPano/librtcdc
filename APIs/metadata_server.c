@@ -117,6 +117,34 @@ uint8_t update_session(char *session_id, char *field, void *value)
                 "state", BCON_INT32 (*(int *)value),
                 "}");
     }
+    else if (strcmp(field, "client_checksum") == 0 )
+    {
+        json_t *client_checksum_json_array = (json_t *)value;
+        size_t index;
+        json_t *file_json;
+        char *filename, *client_checksum;
+
+        bson_t update_bson, set_bson, file_array_bson, file_bson;
+        bson_init(&update_bson);
+        bson_init(&set_bson);
+        bson_init(&file_array_bson);
+        bson_init(&file_bson);
+        bson_append_document_begin(&update_bson, "$set", 4, &set_bson);
+        json_array_foreach(client_checksum_json_array, index, file_json){
+            json_unpack(file_json, "{s:s, s:s}", "filename", &filename, "MD5", &client_checksum);
+            printf("%s, %s\n", filename, client_checksum);
+            
+            bson_reinit(&file_bson);
+            bson_append_utf8(&file_bson, "filename", 8, filename, strlen(filename));
+            bson_append_utf8(&file_bson, "client_checksum", 15, client_checksum, strlen(client_checksum));
+            bson_append_document(&file_array_bson, NULL, 0, (const bson_t *)&file_bson);
+        }
+
+        bson_append_array(&set_bson, "client_checksum", 15, (const bson_t*)&file_array_bson) ;
+        bson_append_document_end(&update_bson, &set_bson);
+
+        update = &update_bson;
+    }
     else{
 #ifdef DEBUG_META
         fprintf(stderr, "METADATA_SERVER: update_session(): the field not exist or the field cannot be changed(e.g repo_name)\n");
@@ -391,6 +419,8 @@ static int callback_SDP(struct libwebsocket_context *context,
                             free(recvd_session_JData);   
                             free(sent_session_JData);
                             free(session_SData);
+                            free(session);
+                            free(session_id);
                             break;
                         }
                 
@@ -438,7 +468,42 @@ static int callback_SDP(struct libwebsocket_context *context,
                             free(sent_session_JData);
                             free(session_SData);
                             break;
-                        }    
+                        }   
+                    case SY_STATUS:
+                        {
+                            fprintf(stderr, "METADATA_SERVER: receive SY_STATUS\n");
+#ifdef DEBUG_META
+                            fprintf(stderr, "METADATA_SERVER: receive checksum from client\n%s\n", session_SData);
+#endif
+                            /* get session info */
+                            char *session_id;
+                            json_unpack(recvd_session_JData, "{s:s}", "session_id", &session_id);
+                            struct session_info_t *session = get_session(session_id);
+
+                            /* update client checksum in the session table */
+                            METADATAtype state = SY_STATUS;
+                            char *client_checksum_str;
+                            json_t *client_checksum_json = json_object_get(recvd_session_JData, "client_checksum");
+                            if(update_session(session_id, "state", (void*)&state) == 0){
+                                /* TODO: if update failed, what to do? */
+                            }
+                            
+                            if(update_session(session_id, "client_checksum", (void *)client_checksum_json) == 0){
+                                /* TODO: if update failed, what to do? */
+                            }
+                            /* update client_wsi*/
+                            /* send SY_STATUS and session_id repo_name to fileserver to get the file checksum on fileserver */    
+                            break; 
+                        } 
+                    case FS_STATUS_OK:
+                        {
+                            /* get session info */
+                            /* update fs checksum in the DIFF field */
+                            /* get client checksum in the DIFF field */
+                            /* compare fs and client checksum to find out which file is dirty */
+                            /* send SY_STATUS_OK and a list of dirty file*/
+                            break;
+                        }
                     default:
                         break;
                 }

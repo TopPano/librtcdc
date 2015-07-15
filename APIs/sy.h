@@ -26,4 +26,8 @@ uint8_t sy_init(struct sy_session_t *sy_session, char *repo_name, char *local_re
 
 uint8_t sy_connect(struct sy_session_t *sy_session, char *URI_code, char *local_repo_path, char *apikey, char *token);
 
+
+/* TODO: add DIFF structure */
+uint8_t sy_status(struct sy_session_t *sy_session);
+
 uint8_t sy_upload(struct sy_session_t *sy_session);

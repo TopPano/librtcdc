@@ -163,7 +163,12 @@ static int callback_fileserver(struct libwebsocket_context *context,
                                 json_decref(sent_session_JData);
                                 free(recvd_session_JData);
                             }
-
+                        case SY_STATUS:
+                            /* calculate the file checksum under the repo_name */ 
+                            /* and insert into a json object */
+                            /* send the FS_STATUS, json object and session_id back to the metadata server */
+                            
+                            break;
                         default:
                             break;
                     }
