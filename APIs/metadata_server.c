@@ -487,12 +487,18 @@ static int callback_SDP(struct libwebsocket_context *context,
                             if(update_session(session_id, "state", (void*)&state) == 0){
                                 /* TODO: if update failed, what to do? */
                             }
-                            
                             if(update_session(session_id, "client_checksum", (void *)client_checksum_json) == 0){
                                 /* TODO: if update failed, what to do? */
                             }
+
                             /* update client_wsi*/
-                            /* send SY_STATUS and session_id repo_name to fileserver to get the file checksum on fileserver */    
+                            if(update_session(session_id, "client_wsi", (void *)((intptr_t)wsi)) == 0){
+                                /* TODO: if update failed, what to do? */
+                            }
+
+                            /* send SY_STATUS and session_id repo_name to fileserver to get the file checksum on fileserver */   
+
+
                             break; 
                         } 
                     case FS_STATUS_OK:

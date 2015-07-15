@@ -367,7 +367,7 @@ startup_thread(gpointer user_data)
     return NULL;
 
 #ifdef DEBUG_SCTP
-  fprintf(stderr, "ICE negotiation done\n");
+  fprintf(stderr, "RTCDC: ICE negotiation done\n");
 #endif
 
   if (peer->role == RTCDC_PEER_ROLE_CLIENT)
@@ -382,7 +382,7 @@ startup_thread(gpointer user_data)
     return NULL;
 
 #ifdef DEBUG_SCTP
-  fprintf(stderr, "DTLS handshake done\n");
+  fprintf(stderr, "RTCDC: DTLS handshake done\n");
 #endif
 
   if (peer->role == RTCDC_PEER_ROLE_CLIENT) {
@@ -397,11 +397,11 @@ startup_thread(gpointer user_data)
 #endif
     if (usrsctp_connect(sctp->sock, (struct sockaddr *)&sconn, sizeof sconn) < 0) {
 #ifdef DEBUG_SCTP
-      fprintf(stderr, "SCTP connection failed\n");
+      fprintf(stderr, "RTCDC: SCTP connection failed\n");
 #endif
     } else {
 #ifdef DEBUG_SCTP
-      fprintf(stderr, "SCTP connected\n");
+      fprintf(stderr, "RTCDC: SCTP connected\n");
 #endif
       sctp->handshake_done = TRUE;
 

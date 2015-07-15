@@ -387,8 +387,6 @@ if (err  < 0) {
     return -1;
 }
 else{ 
-    if(c%1000 == 0)
-        printf("send file\n");
 }
 c++;
 
