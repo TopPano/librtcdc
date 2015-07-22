@@ -54,6 +54,7 @@ struct URI_info_t{
 
 struct writedata_info_t{
     struct libwebsocket *target_wsi;
+    METADATAtype type;
     char data[DATASIZE];
 };
 

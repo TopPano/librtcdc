@@ -304,6 +304,7 @@ static int callback_SDP(struct libwebsocket_context *context,
         case LWS_CALLBACK_CLOSED:
             fprintf(stderr, "METADATA_SERVER: LWS_CALLBACK_CLOSED\n");
             // deregister the fileserver name and fileserver wsi in mongoDB
+            /* TODO: delete_fileserver happenrd when fileserver closed, how about the client closed? */
             delete_fileserver(wsi);
             break;
         case LWS_CALLBACK_RECEIVE:
@@ -515,6 +516,7 @@ static int callback_SDP(struct libwebsocket_context *context,
                         } 
                     case FS_STATUS_OK:
                         {
+                            fprintf(stderr, "METADATA_SERVER: receive SY_STATUS %s\n", session_SData);
                             /* get session info */
                             /* update fs checksum in the DIFF field */
                             /* get client checksum in the DIFF field */

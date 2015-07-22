@@ -327,12 +327,13 @@ uint8_t sy_status(struct sy_session_t *sy_session)
     work.data = (void *)metadata_conn;
     uv_queue_work(main_loop, &work, uv_signal_connect, NULL);
 
-    /* read all files in local_repo_path*/
     sent_lws_JData = json_object();
     json_t *json_arr = json_array();
     json_object_set_new(sent_lws_JData, "metadata_type", json_integer(SY_STATUS));
     json_object_set_new(sent_lws_JData, "session_id", json_string(sy_session->session_id));
     json_object_set_new(sent_lws_JData, "client_checksum", json_arr);
+
+    /* read all files in local_repo_path*/
     DIR *dp;
     struct dirent *ep;
     dp = opendir(sy_session->local_repo_path);
