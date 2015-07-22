@@ -59,16 +59,20 @@ static int callback_fileserver(struct libwebsocket_context *context,
         void *in, size_t len)
 {
     SESSIONstate *session_state = (SESSIONstate *)user;
-
     /* SData: string data*/
+    //struct writedata_info_t *write_data = (struct writedata_info_t *)user;
     switch (reason) {
         case LWS_CALLBACK_CLIENT_ESTABLISHED:
+            
+            printf("pty:%p\n", user);
             fprintf(stderr, "FILE_SERVER: LWS_CALLBACK_CLIENT_ESTABLISHED\n");
             *session_state = FILESERVER_INITIAL;
             libwebsocket_callback_on_writable(context, wsi);
             break;
 
         case LWS_CALLBACK_CLIENT_CONNECTION_ERROR:
+            
+            printf("pty:%p\n", user);
             fprintf(stderr, "FILE_SERVER: LWS_CALLBACK_CLIENT_CONNECTION_ERROR\n");
             break;
 
@@ -80,6 +84,8 @@ static int callback_fileserver(struct libwebsocket_context *context,
 
         case LWS_CALLBACK_CLIENT_WRITEABLE:
             {
+                
+                printf("pty:%p\n", user);
                 int metadata_type, lws_err;
                 char *session_SData = NULL;
                 json_t *sent_session_JData = NULL;
@@ -102,15 +108,16 @@ static int callback_fileserver(struct libwebsocket_context *context,
             }
         case LWS_CALLBACK_CLIENT_RECEIVE:
             {
+                
+                printf("pty:%p\n", user);
                 int metadata_type, lws_err;
                 char *session_SData = (char *)in;
                 json_t *sent_session_JData = NULL;
                 json_t *recvd_session_JData = NULL;
                 json_error_t *err = NULL;
-
                 recvd_session_JData = json_loads((const char *)session_SData, JSON_DECODE_ANY, err);
+                /* TODO: uniray7: i dont think metadata_type is static, but it is */
                 json_unpack(recvd_session_JData, "{s:i}", "metadata_type", &metadata_type);
-
                 if(*session_state == FILESERVER_INITIAL){ 
                     switch(metadata_type){
                         case FS_REGISTER_OK_t:
@@ -162,13 +169,21 @@ static int callback_fileserver(struct libwebsocket_context *context,
 #endif
                                 json_decref(sent_session_JData);
                                 free(recvd_session_JData);
+                                break;
                             }
                         case SY_STATUS:
-                            /* calculate the file checksum under the repo_name */ 
-                            /* and insert into a json object */
-                            /* send the FS_STATUS, json object and session_id back to the metadata server */
+                            {
+#ifdef DEBUG_FS
+                                fprintf(stderr, "FILE_SERVER: receive SY_STATUS\n");
+#endif
+                                /* calculate the file checksum under the repo_name */ 
+                                
+                                /* and insert into a json object */
+                                /* send the FS_STATUS, json object and session_id back to the metadata server */
+                           
                             
-                            break;
+                                break;
+                            }
                         default:
                             break;
                     }

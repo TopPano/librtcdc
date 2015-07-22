@@ -106,7 +106,7 @@ uint8_t update_session(char *session_id, char *field, void *value)
     bson_t *query = NULL;
     bson_error_t error;
     query = BCON_NEW ("session_id", BCON_UTF8(session_id));
-    
+
     if(strcmp(field, "client_wsi") == 0){
         update = BCON_NEW ("$set", "{",
                 "client_wsi", BCON_INT32 (*(int *)value),
@@ -132,8 +132,7 @@ uint8_t update_session(char *session_id, char *field, void *value)
         bson_append_document_begin(&update_bson, "$set", 4, &set_bson);
         json_array_foreach(client_checksum_json_array, index, file_json){
             json_unpack(file_json, "{s:s, s:s}", "filename", &filename, "MD5", &client_checksum);
-            printf("%s, %s\n", filename, client_checksum);
-            
+
             bson_reinit(&file_bson);
             bson_append_utf8(&file_bson, "filename", 8, filename, strlen(filename));
             bson_append_utf8(&file_bson, "client_checksum", 15, client_checksum, strlen(client_checksum));
@@ -188,7 +187,7 @@ struct session_info_t *get_session(char *session_id)
         BSON_ITER_HOLDS_INT32(&value);
         intptr_t fileserver_wsi_ptr = (intptr_t) bson_iter_int32(&value);
         session->fileserver_wsi = (struct libwebsocket *)fileserver_wsi_ptr;
-       
+
         bson_iter_init(&iter, find_context);
         bson_iter_find_descendant(&iter, "client_wsi", &value);
         BSON_ITER_HOLDS_INT32(&value);
@@ -200,7 +199,7 @@ struct session_info_t *get_session(char *session_id)
         BSON_ITER_HOLDS_UTF8(&value);
         uint32_t length;
         strcpy(session->repo_name, (char *)bson_iter_utf8(&value, &length));
-        
+
         strcpy(session->session_id, session_id);
     }
     return session;
@@ -232,13 +231,13 @@ struct URI_info_t *get_URI(char *URI_code)
         BSON_ITER_HOLDS_INT32(&value);
         intptr_t fileserver_wsi_ptr = (intptr_t) bson_iter_int32(&value);
         URI->fileserver_wsi = (struct libwebsocket *)fileserver_wsi_ptr;
-       
+
         bson_iter_init(&iter, find_context);
         bson_iter_find_descendant(&iter, "repo_name", &value);
         BSON_ITER_HOLDS_UTF8(&value);
         uint32_t length;
         strcpy(URI->repo_name, (char *)bson_iter_utf8(&value, &length));
-        
+
         strcpy(URI->URI_code, URI_code);
     }
     return URI;
@@ -290,9 +289,14 @@ static int callback_SDP(struct libwebsocket_context *context,
         enum libwebsocket_callback_reasons reason, void *user,
         void *in, size_t len)
 {
+    struct writedata_info_t *write_data = (struct writedata_info_t *)user;
     switch (reason) {
         case LWS_CALLBACK_ESTABLISHED:
             fprintf(stderr, "METADATA_SERVER: LWS_CALLBACK_ESTABLISHED\n");
+            /* initial write data */
+            write_data = (struct writedata_info_t *)calloc(1, sizeof(struct writedata_info_t));
+            write_data->target_wsi = NULL;
+            memset(write_data, 0, DATASIZE);
             break;
         case LWS_CALLBACK_CLIENT_CONNECTION_ERROR:
             fprintf(stderr, "METADATA_SERVER: LWS_CALLBACK_CLIENT_CONNECTION_ERROR\n");
@@ -317,9 +321,9 @@ static int callback_SDP(struct libwebsocket_context *context,
                         {
                             fprintf(stderr, "METADATA_SERVER: receive FS_REGISTER_t\n");
                             // insert the fileserver info in mongoDB
-                            
+
                             if(insert_fileserver("toppano://server1.tw", wsi) == 0){
-                                 /* TODO: if insert failed, what to do? */
+                                /* TODO: if insert failed, what to do? */
                             }
                             //send FILESERVER_REGISTER_OK_t back to file server 
                             // the file server dns is assigned by signaling server
@@ -356,7 +360,7 @@ static int callback_SDP(struct libwebsocket_context *context,
                             struct libwebsocket *client_wsi = wsi;
                             json_unpack(recvd_session_JData, "{s:s}", "repo_name", &repo_name);
                             if((session_id = insert_session(fileserver_wsi, client_wsi, repo_name, SY_INIT)) == NULL){
-                                 /* TODO: if insert failed, what to do? */
+                                /* TODO: if insert failed, what to do? */
                             }
                             /* send SY_INIT & repo_name & session_id to the fileserver*/
                             sent_session_JData = json_object();
@@ -423,12 +427,12 @@ static int callback_SDP(struct libwebsocket_context *context,
                             free(session_id);
                             break;
                         }
-                
+
                     case SY_CONNECT:
                         {
                             fprintf(stderr, "METADATA_SERVER: receive SY_CONNECT\n");
                             /* TODO: Oauth */
-                            
+
                             char *session_id, *URI_code, *repo_name;
                             struct libwebsocket *fileserver_wsi, *client_wsi;
                             /* lookup the URI_code existed, and get URI_info_t */
@@ -442,16 +446,16 @@ static int callback_SDP(struct libwebsocket_context *context,
                                 /* TODO: send SY_REPO_NOT_EXIST */
                                 break;
                             }
-                            
+
                             fileserver_wsi = URI->fileserver_wsi;
                             client_wsi = wsi;
                             /* Insert (client_wsi, fileserver_wsi, repo_name, state, session_id) into session table */
                             if((session_id = insert_session(fileserver_wsi, client_wsi, URI->repo_name, SY_CONNECT)) == NULL)
                             {
-                                 /* TODO: if insert failed, what to do? */
+                                /* TODO: if insert failed, what to do? */
                             }
 
-                             
+
                             /* send SY_CONNECT_OK & session_id  back to client*/
                             sent_session_JData = json_object();
                             json_object_set_new(sent_session_JData, "metadata_type", json_integer(SY_CONNECT_OK));
@@ -497,7 +501,15 @@ static int callback_SDP(struct libwebsocket_context *context,
                             }
 
                             /* send SY_STATUS and session_id repo_name to fileserver to get the file checksum on fileserver */   
+                            sent_session_JData = json_object();
+                            json_object_set_new(sent_session_JData, "metadata_type", json_integer(SY_STATUS));
+                            json_object_set_new(sent_session_JData, "session_id", json_string(session_id));
+                            json_object_set_new(sent_session_JData, "repo_name", json_string(session->repo_name));
 
+                            strcpy(write_data->data, json_dumps(sent_session_JData, 0));
+                            write_data->target_wsi = session->fileserver_wsi;
+                            free(sent_session_JData);
+                            libwebsocket_callback_on_writable(context, wsi);
 
                             break; 
                         } 
@@ -515,7 +527,19 @@ static int callback_SDP(struct libwebsocket_context *context,
                 }
             }
         case LWS_CALLBACK_SERVER_WRITEABLE:
-            break;
+            {
+                size_t data_len;
+                if((data_len = strlen(write_data->data)) >0 )
+                {   
+                    libwebsocket_write(write_data->target_wsi, (void *)write_data->data, data_len, LWS_WRITE_TEXT);
+#ifdef DEBUG_META
+                        fprintf(stderr, "METADATA_SERVER: write data:%s\n", write_data->data);
+#endif
+
+                }
+                memset(user, 0, DATASIZE);
+                break;
+            }
         default:
             break;
     }

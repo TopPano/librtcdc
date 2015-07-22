@@ -51,6 +51,13 @@ struct URI_info_t{
     char URI_code[NAMESIZE];
 };
 
+
+struct writedata_info_t{
+    struct libwebsocket *target_wsi;
+    char data[DATASIZE];
+};
+
+
 struct session_info_t{
     struct libwebsocket *fileserver_wsi;
     struct libwebsocket *client_wsi;

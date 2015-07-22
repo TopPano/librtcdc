@@ -400,7 +400,7 @@ int main(int argc, char *argv[]){
     char *repo_name = "hhh";
     char local_repo_path[128];
     // getcwd(local_repo_path, sizeof(local_repo_path));
-    strcpy(local_repo_path, "/home/uniray/Project/librtcdc/local_repo/");
+    strcpy(local_repo_path, "/home/uniray/Project/local_repo/");
     if(sy_init(sy_session, repo_name, local_repo_path, "apikey", "token") == SY_INIT_OK)
         fprintf(stderr, "sy_init finish\nsession_id:%s, URI_code:%s\n", sy_session->session_id, sy_session->URI_code);
     else
