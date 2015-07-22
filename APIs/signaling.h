@@ -35,14 +35,6 @@ typedef enum {
 } METADATAtype;
 
 
-typedef enum {
-    FILESERVER_INITIAL = 0,
-    FILESERVER_READY,
-    SIGNALSERVER_READY,
-    SIGNALSERVER_RECV_REGISTER,
-    CLIENT_INITIAL,
-    CLIENT_WAIT,
-} SESSIONstate;
 
 
 struct URI_info_t{
