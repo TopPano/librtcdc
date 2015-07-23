@@ -313,8 +313,8 @@ static int callback_SDP(struct libwebsocket_context *context,
                 int metadata_type ,lws_err;
                 char *recvd_data_str = (char *)in;
                 char *sent_data_str = NULL;
-                json_error_t *err = NULL;
                 json_t *recvd_session_JData = NULL;
+                json_error_t *err = NULL;
                 recvd_session_JData = json_loads((const char *)recvd_data_str, JSON_DECODE_ANY, err);
                 json_unpack(recvd_session_JData, "{s:i}", "metadata_type", &metadata_type);
                 switch (metadata_type){

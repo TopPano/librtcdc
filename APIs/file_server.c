@@ -105,12 +105,15 @@ static int callback_fileserver(struct libwebsocket_context *context,
         enum libwebsocket_callback_reasons reason, void *user,
         void *in, size_t len)
 {
-    struct writedata_info_t *write_data = (struct writedata_info_t *)user;
+    struct writedata_info_t **write_data_ptr = (struct writedata_info_t **)user;
     switch (reason) {
         case LWS_CALLBACK_CLIENT_ESTABLISHED:
             {
-                // printf("pty:%p\n", user);
                 fprintf(stderr, "FILE_SERVER: LWS_CALLBACK_CLIENT_ESTABLISHED\n");
+                /* initial write data */
+                struct writedata_info_t *write_data = (struct writedata_info_t *)calloc(1, sizeof(struct writedata_info_t));
+                *write_data_ptr = write_data;
+
                 /* register to metadata server */
                 json_t *sent_session_JData = json_object();
                 json_object_set_new(sent_session_JData, "metadata_type", json_integer(FS_REGISTER_t)); 
@@ -120,9 +123,9 @@ static int callback_fileserver(struct libwebsocket_context *context,
                 write_data->target_wsi = wsi;
                 write_data->type = FS_REGISTER_t;
                 strcpy(write_data->data, sent_data_str);
+                
                 free(sent_data_str);
                 json_decref(sent_session_JData);
-                sent_session_JData = NULL;
 
                 libwebsocket_callback_on_writable(context, wsi);
                 break;
@@ -141,6 +144,7 @@ static int callback_fileserver(struct libwebsocket_context *context,
             {
                 int lws_err;
                 size_t data_len;
+                struct writedata_info_t *write_data = *write_data_ptr;
                 if((data_len = strlen(write_data->data))>0)
                 {
                     lws_err = libwebsocket_write(write_data->target_wsi, (void *) write_data->data, strlen(write_data->data), LWS_WRITE_TEXT);
@@ -229,6 +233,8 @@ static int callback_fileserver(struct libwebsocket_context *context,
                             json_object_set_new(sent_session_JData, "metadata_type", json_integer(type)); 
                             json_object_set_new(sent_session_JData, "session_id", json_string(session_id)); 
                             sent_data_str = json_dumps(sent_session_JData, 0);
+                            
+                            struct writedata_info_t *write_data = *write_data_ptr;
                             write_data->target_wsi = wsi;
                             write_data->type = type;
                             strcpy(write_data->data, sent_data_str);
@@ -289,10 +295,13 @@ static int callback_fileserver(struct libwebsocket_context *context,
                                 perror ("Couldn't open the directory"); 
 
                             /* send the FS_STATUS, json object and session_id back to the metadata server */
-                            char *sent_data_str = json_dumps(sent_session_JData, 0);
+                            sent_data_str = json_dumps(sent_session_JData, 0);
+                            
+                            struct writedata_info_t *write_data = *write_data_ptr;
                             write_data->target_wsi = wsi;
                             write_data->type = FS_STATUS_OK;
                             strcpy(write_data->data, sent_data_str);
+                            
                             libwebsocket_callback_on_writable(context, wsi);
 
                             break;
