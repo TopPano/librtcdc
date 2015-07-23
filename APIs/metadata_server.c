@@ -289,15 +289,16 @@ static int callback_SDP(struct libwebsocket_context *context,
         enum libwebsocket_callback_reasons reason, void *user,
         void *in, size_t len)
 {
-    struct writedata_info_t *write_data = (struct writedata_info_t *)user;
+    struct writedata_info_t **write_data_ptr = (struct writedata_info_t **)user;
     switch (reason) {
         case LWS_CALLBACK_ESTABLISHED:
-            fprintf(stderr, "METADATA_SERVER: LWS_CALLBACK_ESTABLISHED\n");
-            /* initial write data */
-            write_data = (struct writedata_info_t *)calloc(1, sizeof(struct writedata_info_t));
-            write_data->target_wsi = NULL;
-            memset(write_data, 0, DATASIZE);
-            break;
+            {
+                fprintf(stderr, "METADATA_SERVER: LWS_CALLBACK_ESTABLISHED\n");
+                /* initial write data */
+                struct writedata_info_t *write_data = (struct writedata_info_t *)calloc(1, sizeof(struct writedata_info_t));
+                *write_data_ptr = write_data;
+                break;
+            }
         case LWS_CALLBACK_CLIENT_CONNECTION_ERROR:
             fprintf(stderr, "METADATA_SERVER: LWS_CALLBACK_CLIENT_CONNECTION_ERROR\n");
             break;
@@ -310,45 +311,43 @@ static int callback_SDP(struct libwebsocket_context *context,
         case LWS_CALLBACK_RECEIVE:
             {
                 int metadata_type ,lws_err;
-                char *session_SData = (char *)in;
+                char *recvd_data_str = (char *)in;
+                char *sent_data_str = NULL;
                 json_error_t *err = NULL;
-                json_t *sent_session_JData = NULL;
                 json_t *recvd_session_JData = NULL;
-                recvd_session_JData = json_loads((const char *)session_SData, JSON_DECODE_ANY, err);
+                recvd_session_JData = json_loads((const char *)recvd_data_str, JSON_DECODE_ANY, err);
                 json_unpack(recvd_session_JData, "{s:i}", "metadata_type", &metadata_type);
-
                 switch (metadata_type){
                     case FS_REGISTER_t:
                         {
                             fprintf(stderr, "METADATA_SERVER: receive FS_REGISTER_t\n");
                             // insert the fileserver info in mongoDB
-
                             if(insert_fileserver("toppano://server1.tw", wsi) == 0){
                                 /* TODO: if insert failed, what to do? */
                             }
                             //send FILESERVER_REGISTER_OK_t back to file server 
                             // the file server dns is assigned by signaling server
-                            sent_session_JData = json_object();
+                            json_t *sent_session_JData = json_object();
                             json_object_set_new(sent_session_JData, "metadata_type", json_integer(FS_REGISTER_OK_t));
                             json_object_set_new(sent_session_JData, "fileserver_dns", json_string("toppano://server1.tw"));
-                            session_SData = json_dumps(sent_session_JData, 0);
-                            lws_err = libwebsocket_write(wsi, (void *)session_SData, strlen(session_SData), LWS_WRITE_TEXT);
-#ifdef DEBUG_META
-                            if(lws_err<0)
-                                fprintf(stderr, "METADATA_SERVER: send FS_REGISTER_OK_t fail\n");
-                            else
-                                fprintf(stderr, "METADATA_SERVER: send FS_REGISTER_OK_t\n");
-#endif
-                            free(recvd_session_JData);   
-                            free(sent_session_JData);
-                            free(session_SData);
+                            sent_data_str = json_dumps(sent_session_JData, 0);
+
+                            struct writedata_info_t *write_data = *write_data_ptr;
+                            write_data->target_wsi = wsi;
+                            write_data->type = FS_REGISTER_OK_t;
+                            strcpy(write_data->data, sent_data_str);
+
+                            libwebsocket_callback_on_writable(context, wsi);
+                           
+                            json_decref(recvd_session_JData);   
+                            json_decref(sent_session_JData);
+                            free(sent_data_str);
                             break;
                         }
                     case SY_INIT:
                         {
                             fprintf(stderr, "METADATA_SERVER: receive SY_INIT\n");
                             /* Oauth */
-
                             /* Insert (client_wsi, fileserver_wsi, repo_name, state, session_id) into session table */
                             char *session_id, *repo_name;
                             /* TODO: exception when  "toppano://server1.tw" not exist */
@@ -364,27 +363,32 @@ static int callback_SDP(struct libwebsocket_context *context,
                                 /* TODO: if insert failed, what to do? */
                             }
                             /* send SY_INIT & repo_name & session_id to the fileserver*/
-                            sent_session_JData = json_object();
+                            json_t *sent_session_JData = json_object();
                             json_object_set_new(sent_session_JData, "metadata_type", json_integer(SY_INIT));
                             json_object_set_new(sent_session_JData, "repo_name", json_string(repo_name));
                             json_object_set_new(sent_session_JData, "session_id", json_string(session_id));
-                            session_SData = json_dumps(sent_session_JData, 0);
-                            lws_err = libwebsocket_write(fileserver_wsi, (void *)session_SData, strlen(session_SData), LWS_WRITE_TEXT);
-#ifdef DEBUG_META
-                            if(lws_err<0)
-                                fprintf(stderr, "METADATA_SERVER: send SY_INIT to fileserver fail\n");
-                            else
-                                fprintf(stderr, "METADATA_SERVER: send SY_INIT to fileserver\n");
-#endif
-                            free(recvd_session_JData);   
-                            free(sent_session_JData);
-                            free(session_SData);
+                            sent_data_str = json_dumps(sent_session_JData, 0);
+
+                            struct writedata_info_t *write_data = *write_data_ptr;
+                            write_data->target_wsi = fileserver_wsi;
+                            write_data->type = SY_INIT;
+                            strcpy(write_data->data, sent_data_str);
+
+                            libwebsocket_callback_on_writable(context, wsi);
+
+                            json_decref(recvd_session_JData);   
+                            json_decref(sent_session_JData);
+                            free(sent_data_str);
+                            /*TODO: uniray7: I dont know why i cannot free repo_name which is used by json_unpack()
+                             * if free, metadata server will segmentation fault
+                             * */ 
+                            //free(repo_name);
                             break;
                         }
                     case FS_INIT_OK:
                         {                    
                             fprintf(stderr, "METADATA_SERVER: receive FS_INIT_OK\n");
-                            char *session_id; 
+                            char *session_id = NULL; 
                             json_unpack(recvd_session_JData, "{s:s}", "session_id", &session_id);
                             /* Gen a URI_code and insert into Filesys tree (URI_code, repo_name, fileserver_wsi) */
                             char URI_code[NAMESIZE];
@@ -409,23 +413,27 @@ static int callback_SDP(struct libwebsocket_context *context,
                             }
 
                             /* send SY_INIT_OK, URI_code, session_id to client according to client_wsi in session table */
-                            sent_session_JData = json_object();
+                            json_t *sent_session_JData = json_object();
                             json_object_set_new(sent_session_JData, "metadata_type", json_integer(SY_INIT_OK));
                             json_object_set_new(sent_session_JData, "URI_code", json_string(URI_code));
                             json_object_set_new(sent_session_JData, "session_id", json_string(session_id));
-                            session_SData = json_dumps(sent_session_JData, 0);
-                            lws_err = libwebsocket_write(session->client_wsi, (void *)session_SData, strlen(session_SData), LWS_WRITE_TEXT);
-#ifdef DEBUG_META
-                            if(lws_err<0)
-                                fprintf(stderr, "METADATA_SERVER: send SY_INIT_OK to client fail\n");
-                            else
-                                fprintf(stderr, "METADATA_SERVER: send SY_INIT_OK to client\n");
-#endif
-                            free(recvd_session_JData);   
-                            free(sent_session_JData);
-                            free(session_SData);
+                            sent_data_str = json_dumps(sent_session_JData, 0);
+
+                            struct writedata_info_t *write_data = *write_data_ptr;
+                            write_data->target_wsi = session->client_wsi;
+                            write_data->type = SY_INIT_OK;
+                            strcpy(write_data->data, sent_data_str);
+
+                            libwebsocket_callback_on_writable(context, wsi);
+                   
+                            json_decref(recvd_session_JData);   
+                            json_decref(sent_session_JData);
+                            free(sent_data_str);
                             free(session);
-                            free(session_id);
+                            //free(session_id);
+                            /*TODO: uniray7: I dont know why i cannot free session which is used by json_unpack()
+                             * if free, metadata server will segmentation fault
+                             * */ 
                             break;
                         }
 
@@ -458,27 +466,29 @@ static int callback_SDP(struct libwebsocket_context *context,
 
 
                             /* send SY_CONNECT_OK & session_id  back to client*/
-                            sent_session_JData = json_object();
+                            json_t *sent_session_JData = json_object();
                             json_object_set_new(sent_session_JData, "metadata_type", json_integer(SY_CONNECT_OK));
                             json_object_set_new(sent_session_JData, "session_id", json_string(session_id));
-                            session_SData = json_dumps(sent_session_JData, 0);
-                            lws_err = libwebsocket_write(client_wsi, (void *)session_SData, strlen(session_SData), LWS_WRITE_TEXT);
-#ifdef DEBUG_META
-                            if(lws_err<0)
-                                fprintf(stderr, "METADATA_SERVER: send SY_CONNECT_OK to client fail\n");
-                            else
-                                fprintf(stderr, "METADATA_SERVER: send SY_CONNECT_OK to client\n");
-#endif
-                            free(recvd_session_JData);   
-                            free(sent_session_JData);
-                            free(session_SData);
+                            sent_data_str = json_dumps(sent_session_JData, 0);
+                            
+                            struct writedata_info_t *write_data = *write_data_ptr;
+                            write_data->target_wsi = client_wsi;
+                            write_data->type = SY_CONNECT_OK;
+                            strcpy(write_data->data, sent_data_str);
+                           
+                            libwebsocket_callback_on_writable(context, wsi);
+                            
+                            json_decref(recvd_session_JData);   
+                            json_decref(sent_session_JData);
+                            free(sent_data_str);
+
                             break;
                         }   
                     case SY_STATUS:
                         {
                             fprintf(stderr, "METADATA_SERVER: receive SY_STATUS\n");
 #ifdef DEBUG_META
-                            fprintf(stderr, "METADATA_SERVER: receive checksum from client\n%s\n", session_SData);
+                            fprintf(stderr, "METADATA_SERVER: receive checksum from client\n%s\n", recvd_data_str);
 #endif
                             /* get session info */
                             char *session_id;
@@ -502,11 +512,12 @@ static int callback_SDP(struct libwebsocket_context *context,
                             }
 
                             /* send SY_STATUS and session_id repo_name to fileserver to get the file checksum on fileserver */   
-                            sent_session_JData = json_object();
+                            json_t *sent_session_JData = json_object();
                             json_object_set_new(sent_session_JData, "metadata_type", json_integer(SY_STATUS));
                             json_object_set_new(sent_session_JData, "session_id", json_string(session_id));
                             json_object_set_new(sent_session_JData, "repo_name", json_string(session->repo_name));
 
+                            struct writedata_info_t *write_data = *write_data_ptr;
                             strcpy(write_data->data, json_dumps(sent_session_JData, 0));
                             write_data->target_wsi = session->fileserver_wsi;
                             free(sent_session_JData);
@@ -516,7 +527,7 @@ static int callback_SDP(struct libwebsocket_context *context,
                         } 
                     case FS_STATUS_OK:
                         {
-                            fprintf(stderr, "METADATA_SERVER: receive SY_STATUS %s\n", session_SData);
+                            fprintf(stderr, "METADATA_SERVER: receive SY_STATUS %s\n", recvd_data_str);
                             /* get session info */
                             /* update fs checksum in the DIFF field */
                             /* get client checksum in the DIFF field */
@@ -527,19 +538,72 @@ static int callback_SDP(struct libwebsocket_context *context,
                     default:
                         break;
                 }
+                break;
             }
         case LWS_CALLBACK_SERVER_WRITEABLE:
             {
+                int lws_err;
                 size_t data_len;
+                struct writedata_info_t *write_data = *write_data_ptr;
                 if((data_len = strlen(write_data->data)) >0 )
                 {   
-                    libwebsocket_write(write_data->target_wsi, (void *)write_data->data, data_len, LWS_WRITE_TEXT);
+                   lws_err = libwebsocket_write(write_data->target_wsi, (void *)write_data->data, data_len, LWS_WRITE_TEXT);
 #ifdef DEBUG_META
-                        fprintf(stderr, "METADATA_SERVER: write data:%s\n", write_data->data);
+                   fprintf(stderr, "METADATA_SERVER: write data:%s\n", write_data->data);
 #endif
+                   switch(write_data->type){
+                        case(FS_REGISTER_OK_t):
+                            {
+#ifdef DEBUG_META
+                                if(lws_err<0)
+                                    fprintf(stderr, "METADATA_SERVER: send FS_REGISTER_OK_t fail\n");
+                                else
+                                    fprintf(stderr, "METADATA_SERVER: send FS_REGISTER_OK_t\n");
+#endif
+                                break; 
+                            }
 
+                        case(SY_INIT):
+                            {
+#ifdef DEBUG_META
+                                if(lws_err<0)
+                                    fprintf(stderr, "METADATA_SERVER: send SY_INIT to fileserver fail\n");
+                                else
+                                    fprintf(stderr, "METADATA_SERVER: send SY_INIT to fileserver\n");
+#endif
+                                break;
+                            }
+                        case(SY_INIT_OK):
+                            {
+#ifdef DEBUG_META
+                                if(lws_err<0)
+                                    fprintf(stderr, "METADATA_SERVER: send SY_INIT_OK to client fail\n");
+                                else
+                                    fprintf(stderr, "METADATA_SERVER: send SY_INIT_OK to client\n");
+#endif
+                                break;
+                            }
+
+                        case(SY_CONNECT_OK):
+                            {
+#ifdef DEBUG_META
+                            if(lws_err<0)
+                                fprintf(stderr, "METADATA_SERVER: send SY_CONNECT_OK to client fail\n");
+                            else
+                                fprintf(stderr, "METADATA_SERVER: send SY_CONNECT_OK to client\n");
+#endif
+                                break;
+                            }
+
+                        case(FS_STATUS_OK):
+                            {
+                                break;
+                            }
+                        default:
+                            break;
+                    }
                 }
-                memset(user, 0, DATASIZE);
+                memset((write_data), 0, sizeof(write_data));
                 break;
             }
         default:

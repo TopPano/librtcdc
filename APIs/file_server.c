@@ -116,6 +116,7 @@ static int callback_fileserver(struct libwebsocket_context *context,
                 json_object_set_new(sent_session_JData, "metadata_type", json_integer(FS_REGISTER_t)); 
                 char *sent_data_str = json_dumps(sent_session_JData, 0);
 
+                /* TODO: should allocate memory for write_data pointer? */
                 write_data->target_wsi = wsi;
                 write_data->type = FS_REGISTER_t;
                 strcpy(write_data->data, sent_data_str);
@@ -139,43 +140,48 @@ static int callback_fileserver(struct libwebsocket_context *context,
         case LWS_CALLBACK_CLIENT_WRITEABLE:
             {
                 int lws_err;
-                lws_err = libwebsocket_write(write_data->target_wsi, (void *) write_data->data, strlen(write_data->data), LWS_WRITE_TEXT);
-                switch(write_data->type){
-                    case FS_REGISTER_t:
-                        {
+                size_t data_len;
+                if((data_len = strlen(write_data->data))>0)
+                {
+                    lws_err = libwebsocket_write(write_data->target_wsi, (void *) write_data->data, strlen(write_data->data), LWS_WRITE_TEXT);
+                    switch(write_data->type){
+                        case FS_REGISTER_t:
+                            {
 #ifdef DEBUG_FS
-                            if(lws_err<0)
-                                fprintf(stderr, "FILE_SERVER: send FS_REGISTER_t fail\n");
-                            else 
-                                fprintf(stderr, "FILE_SERVER: send FS_REGISTER_t\n");
+                                if(lws_err<0)
+                                    fprintf(stderr, "FILE_SERVER: send FS_REGISTER_t fail\n");
+                                else 
+                                    fprintf(stderr, "FILE_SERVER: send FS_REGISTER_t\n");
 #endif
-                            break;
-                        }
+                                break;
+                            }
 
-                    case FS_INIT_OK:
-                        {
+                        case FS_INIT_OK:
+                            {
 #ifdef DEBUG_FS
-                            if(lws_err<0)
-                                fprintf(stderr, "FILE_SERVER: send FS_INIT_OK fail\n");
-                            else 
-                                fprintf(stderr, "FILE_SERVER: send FS_INIT_OK\n");
+                                if(lws_err<0)
+                                    fprintf(stderr, "FILE_SERVER: send FS_INIT_OK fail\n");
+                                else 
+                                    fprintf(stderr, "FILE_SERVER: send FS_INIT_OK\n");
 #endif
-                            break;
-                        }
+                                break;
+                            }
 
-                    case FS_STATUS_OK:
-                        {
+                        case FS_STATUS_OK:
+                            {
 #ifdef DEBUG_FS
-                            if(lws_err<0)
-                                fprintf(stderr, "FILE_SERVER: send FS_STATUS_OK fail\n");
-                            else 
-                                fprintf(stderr, "FILE_SERVER: send FS_STATUS_OK\n");
+                                if(lws_err<0)
+                                    fprintf(stderr, "FILE_SERVER: send FS_STATUS_OK fail\n");
+                                else 
+                                    fprintf(stderr, "FILE_SERVER: send FS_STATUS_OK\n");
 #endif
-                            break;
-                        }
+                                break;
+                            }
 
-                    default:
-                        break;
+                        default:
+                            break;
+                    }                
+                    memset(write_data->data, 0, 100);
                 }
                 break;
             }
@@ -226,9 +232,9 @@ static int callback_fileserver(struct libwebsocket_context *context,
                             write_data->target_wsi = wsi;
                             write_data->type = type;
                             strcpy(write_data->data, sent_data_str);
-                            
+
                             libwebsocket_callback_on_writable(context, wsi);
-                            
+
                             free(repo_path);
                             free(repo_name);
                             free(session_id);
@@ -247,7 +253,7 @@ static int callback_fileserver(struct libwebsocket_context *context,
                             json_unpack(recvd_session_JData, "{s:s, s:s}", "repo_name", &repo_name, "session_id", &session_id);
                             strcpy(repo_path, WAREHOUSE_PATH);
                             strcat(repo_path, repo_name);
- 
+
                             /* calculate the file checksum under the repo_name */ 
                             /* and insert into a json object */
                             json_t *sent_session_JData = json_object();
@@ -288,7 +294,7 @@ static int callback_fileserver(struct libwebsocket_context *context,
                             write_data->type = FS_STATUS_OK;
                             strcpy(write_data->data, sent_data_str);
                             libwebsocket_callback_on_writable(context, wsi);
-                            
+
                             break;
                         }
                     default:
