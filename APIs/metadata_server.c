@@ -52,30 +52,48 @@ uint8_t insert_fileserver(char *fileserver_name, struct libwebsocket *fileserver
     return 1;
 }
 
+
+/* TODO: insert_session() needs to be revise because I add "files" field in mongoDB */
 char *insert_session(struct libwebsocket *fileserver_wsi, struct libwebsocket *client_wsi, char *repo_name, METADATAtype state)
 {
     char *session_id = (char *)calloc(1, 25);
     bson_oid_t oid;
     bson_oid_init (&oid, NULL);
     bson_oid_to_string(&oid, session_id);
+/*
+    bson_t *doc = bson_new();*/
 
-    bson_t *doc = bson_new();
-    bson_error_t error;
 
-    BSON_APPEND_UTF8 (doc, "session_id", session_id);
     intptr_t client_wsi_ptr = (intptr_t)client_wsi;
     intptr_t fileserver_wsi_ptr = (intptr_t)fileserver_wsi;
+
+    bson_t insert_bson, file_array_bson;
+    bson_error_t error;
+    bson_init(&insert_bson);
+    bson_init(&file_array_bson);
+    bson_append_utf8(&insert_bson, "session_id", strlen("session_id"), session_id, strlen(session_id));
+    bson_append_int32(&insert_bson, "client_wsi", strlen("client_wsi"), client_wsi_ptr);
+    bson_append_int32(&insert_bson, "fileserver_wsi", strlen("fileserver_wsi"), fileserver_wsi_ptr);
+    bson_append_utf8(&insert_bson, "repo_name", strlen("repo_name"), repo_name, strlen(repo_name));
+    bson_append_int32(&insert_bson, "state", strlen("state"), state);
+    bson_append_array(&insert_bson, "files", strlen("files"), (const bson_t *)&file_array_bson);
+
+    /*
+    BSON_APPEND_UTF8 (doc, "session_id", session_id);
     BSON_APPEND_INT32 (doc, "client_wsi", client_wsi_ptr);
     BSON_APPEND_INT32 (doc, "fileserver_wsi", fileserver_wsi_ptr);
     BSON_APPEND_UTF8 (doc, "repo_name", repo_name);
     BSON_APPEND_INT32 (doc, "state", state);
-
-    if (!mongoc_collection_insert (session_coll, MONGOC_INSERT_NONE, doc, NULL, &error)){
+    */
+    if (!mongoc_collection_insert (session_coll, MONGOC_INSERT_NONE, &insert_bson, NULL, &error)){
 #ifdef DEBUG_META
         fprintf (stderr, "METADATA_SERVER: insert_session(): %s\n", error.message);
 #endif
         return NULL;
     }
+    bson_destroy(&insert_bson);
+    bson_destroy(&file_array_bson);
+
     return session_id;
 }
 
@@ -119,7 +137,7 @@ uint8_t update_session(char *session_id, char *field, void *value)
     }
     else if (strcmp(field, "client_checksum") == 0 )
     {
-        json_t *client_checksum_json_array = (json_t *)value;
+        json_t *files_json = (json_t *)value;
         size_t index;
         json_t *file_json;
         char *filename, *client_checksum;
@@ -130,16 +148,15 @@ uint8_t update_session(char *session_id, char *field, void *value)
         bson_init(&file_array_bson);
         bson_init(&file_bson);
         bson_append_document_begin(&update_bson, "$set", 4, &set_bson);
-        json_array_foreach(client_checksum_json_array, index, file_json){
-            json_unpack(file_json, "{s:s, s:s}", "filename", &filename, "MD5", &client_checksum);
-
+        json_array_foreach(files_json, index, file_json){
+            json_unpack(file_json, "{s:s, s:s}", "filename", &filename, "client_checksum", &client_checksum);
             bson_reinit(&file_bson);
             bson_append_utf8(&file_bson, "filename", 8, filename, strlen(filename));
             bson_append_utf8(&file_bson, "client_checksum", 15, client_checksum, strlen(client_checksum));
             bson_append_document(&file_array_bson, NULL, 0, (const bson_t *)&file_bson);
         }
 
-        bson_append_array(&set_bson, "client_checksum", 15, (const bson_t*)&file_array_bson) ;
+        bson_append_array(&set_bson, "files", 5, (const bson_t*)&file_array_bson) ;
         bson_append_document_end(&update_bson, &set_bson);
 
         update = &update_bson;
@@ -170,6 +187,8 @@ struct session_info_t *get_session(char *session_id)
     BSON_APPEND_BOOL(proj, "fileserver_wsi", true);
     BSON_APPEND_BOOL(proj, "client_wsi", true);
     BSON_APPEND_BOOL(proj, "repo_name", true);
+    BSON_APPEND_BOOL(proj, "files", true);
+    /* TODO proj may be deleted */
     cursor = mongoc_collection_find (session_coll, MONGOC_QUERY_NONE, 0, 0, 0, find_query, proj, NULL);
 
     struct session_info_t *session = NULL;
@@ -180,6 +199,36 @@ struct session_info_t *get_session(char *session_id)
         return NULL;
     }
     else{
+        char *find_context_str;
+        find_context_str = bson_as_json(find_context, NULL);
+        
+        json_error_t *err = NULL;
+        json_t *find_context_json = json_loads((const char *)find_context_str, JSON_DECODE_ANY, err);
+        
+        json_t *fileserver_wsi_json = json_object_get(find_context_json, "fileserver_wsi");
+        json_t *client_wsi_json = json_object_get(find_context_json, "client_wsi");
+        json_t *repo_name_json = json_object_get(find_context_json, "repo_name");
+        json_t *files_json = json_object_get(find_context_json, "files");
+
+        session = (struct session_info_t *)calloc(1, sizeof(struct session_info_t));
+        
+        intptr_t fileserver_wsi_ptr = (intptr_t)((int)json_integer_value(fileserver_wsi_json));
+        session->fileserver_wsi = (struct libwebsocket *)fileserver_wsi_ptr;
+        intptr_t client_wsi_ptr = (intptr_t)json_integer_value(client_wsi_json);
+        session->client_wsi = (struct libwebsocket *) client_wsi_ptr;
+        strcpy(session->repo_name, json_string_value(repo_name_json));
+        strcpy(session->files, json_dumps(files_json, 0));
+        
+        json_decref(files_json);
+        json_decref(repo_name_json);
+        json_decref(client_wsi_json);
+        json_decref(fileserver_wsi_json);
+
+        bson_free(find_context_str);
+
+/*        
+        bson_t *doc;
+        //libbon is hard to use, I(uniray7) use jansson instead
         session = (struct session_info_t *)calloc(1, sizeof(struct session_info_t));
         bson_iter_t iter, value;
         bson_iter_init(&iter, find_context);
@@ -200,6 +249,7 @@ struct session_info_t *get_session(char *session_id)
         uint32_t length;
         strcpy(session->repo_name, (char *)bson_iter_utf8(&value, &length));
 
+*/
         strcpy(session->session_id, session_id);
     }
     return session;
@@ -293,7 +343,7 @@ static int callback_SDP(struct libwebsocket_context *context,
     switch (reason) {
         case LWS_CALLBACK_ESTABLISHED:
             {
-                fprintf(stderr, "METADATA_SERVER: LWS_CALLBACK_ESTABLISHED\n");
+                fprintf(stderr, "\nMETADATA_SERVER: LWS_CALLBACK_ESTABLISHED\n");
                 /* initial write data */
                 struct writedata_info_t *write_data = (struct writedata_info_t *)calloc(1, sizeof(struct writedata_info_t));
                 *write_data_ptr = write_data;
@@ -488,7 +538,7 @@ static int callback_SDP(struct libwebsocket_context *context,
                         {
                             fprintf(stderr, "METADATA_SERVER: receive SY_STATUS\n");
 #ifdef DEBUG_META
-                            fprintf(stderr, "METADATA_SERVER: receive checksum from client\n%s\n", recvd_data_str);
+                            fprintf(stderr, "METADATA_SERVER: receive client checksum\n%s\n\n", recvd_data_str);
 #endif
                             /* get session info */
                             char *session_id;
@@ -497,12 +547,11 @@ static int callback_SDP(struct libwebsocket_context *context,
 
                             /* update client checksum in the session table */
                             METADATAtype state = SY_STATUS;
-                            char *client_checksum_str;
-                            json_t *client_checksum_json = json_object_get(recvd_session_JData, "client_checksum");
+                            json_t *files_json = json_object_get(recvd_session_JData, "files");
                             if(update_session(session_id, "state", (void*)&state) == 0){
                                 /* TODO: if update failed, what to do? */
                             }
-                            if(update_session(session_id, "client_checksum", (void *)client_checksum_json) == 0){
+                            if(update_session(session_id, "client_checksum", (void *)files_json) == 0){
                                 /* TODO: if update failed, what to do? */
                             }
 
@@ -527,9 +576,18 @@ static int callback_SDP(struct libwebsocket_context *context,
                         } 
                     case FS_STATUS_OK:
                         {
-                            fprintf(stderr, "METADATA_SERVER: receive SY_STATUS %s\n", recvd_data_str);
+                            fprintf(stderr, "METADATA_SERVER: receive fileserver checksum\n%s\n\n", recvd_data_str);
+                            
                             /* get session info */
-                            /* update fs checksum in the DIFF field */
+                            char *session_id, *files;
+                            json_unpack(recvd_session_JData, "{s:s}", "session_id", &session_id);
+                            struct session_info_t *session = get_session(session_id);
+                            
+                            /* get the fs checksum from the session*/
+                            json_t *files_json = json_object_get(recvd_session_JData, "files");
+                            /* get the client checksum from the session*/
+
+                            /* update fs checksum in the field */
                             /* get client checksum in the DIFF field */
                             /* compare fs and client checksum to find out which file is dirty */
                             /* send SY_STATUS_OK and a list of dirty file*/

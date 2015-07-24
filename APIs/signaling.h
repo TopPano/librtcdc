@@ -56,6 +56,7 @@ struct session_info_t{
     struct libwebsocket *client_wsi;
     char repo_name[NAMESIZE];
     char session_id[NAMESIZE];
+    char files[DATASIZE];
     METADATAtype state;
 };
 

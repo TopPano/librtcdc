@@ -266,7 +266,7 @@ static int callback_fileserver(struct libwebsocket_context *context,
                             json_t *json_arr = json_array();
                             json_object_set_new(sent_session_JData, "metadata_type", json_integer(FS_STATUS_OK));
                             json_object_set_new(sent_session_JData, "session_id", json_string(session_id));
-                            json_object_set_new(sent_session_JData, "client_checksum", json_arr);
+                            json_object_set_new(sent_session_JData, "files", json_arr);
                             DIR *dp;
                             struct dirent *ep;
                             dp = opendir(repo_path);
@@ -283,7 +283,7 @@ static int callback_fileserver(struct libwebsocket_context *context,
                                         char *file_md5 = gen_md5(ep->d_name);
                                         printf("%s\n", file_md5);
                                         json_object_set_new(file_json, "filename", json_string(ep->d_name));
-                                        json_object_set_new(file_json, "MD5", json_string(file_md5));
+                                        json_object_set_new(file_json, "fs_checksum", json_string(file_md5));
                                         json_array_append(json_arr, file_json);
                                         json_decref(file_json);
                                         free(file_md5);
