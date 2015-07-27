@@ -422,10 +422,11 @@ uint8_t sy_status(struct sy_session_t *sy_session, struct sy_diff_t *sy_session_
     return SY_STATUS_OK;
 }
 
-
-uint8_t sy_upload(struct sy_session_t *sy_session)
+uint8_t sy_upload(struct sy_session_t *sy_session, struct sy_diff_t *sy_session_diff)
 {
+    /* connect to metadata server*/
 
+    /* send request: upload files which the fileserver doesnt have*/
 }
 
 
@@ -469,6 +470,9 @@ int main(int argc, char *argv[]){
         printf("filename:%s, dirty:%d\n", (sy_session_diff->files_diff[i]).filename, (sy_session_diff->files_diff[i]).dirty);
     }
 
+
+    printf("\n");
+    sy_upload(sy_session, sy_session_diff);
     return 0;
 }
 

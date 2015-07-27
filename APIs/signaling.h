@@ -34,6 +34,12 @@ typedef enum {
     FS_SDP,
 } METADATAtype;
 
+typedef enum {
+    FILE_CLEAN = 0,
+    FILE_CLIENT_LACK,
+    FILE_FS_LACK,
+    FILE_DIRTY,
+} FILEstatus;
 
 struct URI_info_t{
     struct libwebsocket *fileserver_wsi;

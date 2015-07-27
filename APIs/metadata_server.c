@@ -692,9 +692,13 @@ static int callback_SDP(struct libwebsocket_context *context,
                                 json_object_set_new(sent_element, "filename", json_string(filename));
 
                                 if(strcmp(client_checksum, fs_checksum) == 0)
-                                    json_object_set_new(sent_element, "dirty", json_integer(0));
+                                    json_object_set_new(sent_element, "dirty", json_integer(FILE_CLEAN));
+                                else if(strcmp(client_checksum, "") == 0)
+                                    json_object_set_new(sent_element, "dirty", json_integer(FILE_CLIENT_LACK));
+                                else if(strcmp(fs_checksum, "") == 0)
+                                    json_object_set_new(sent_element, "dirty", json_integer(FILE_FS_LACK));
                                 else
-                                    json_object_set_new(sent_element, "dirty", json_integer(1));
+                                    json_object_set_new(sent_element, "dirty", json_integer(FILE_DIRTY));
                                 json_array_append(sent_array, sent_element); 
                             }
 
