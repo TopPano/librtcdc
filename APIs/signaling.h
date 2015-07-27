@@ -35,21 +35,17 @@ typedef enum {
 } METADATAtype;
 
 
-
-
 struct URI_info_t{
     struct libwebsocket *fileserver_wsi;
     char repo_name[NAMESIZE];
     char URI_code[NAMESIZE];
 };
 
-
 struct writedata_info_t{
     struct libwebsocket *target_wsi;
     METADATAtype type;
     char data[DATASIZE];
 };
-
 
 struct session_info_t{
     struct libwebsocket *fileserver_wsi;
@@ -64,6 +60,12 @@ struct conn_info_t{
     struct libwebsocket *wsi;
     struct libwebsocket_context* context;
     volatile uint8_t *exit;
+};
+
+struct diff_info_t{
+    char filename[NAMESIZE];
+    int dirty;
+    /* 1 is dirty, while 0 is not */
 };
 
 /* for signal_server

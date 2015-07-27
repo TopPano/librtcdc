@@ -60,8 +60,8 @@ char *insert_session(struct libwebsocket *fileserver_wsi, struct libwebsocket *c
     bson_oid_t oid;
     bson_oid_init (&oid, NULL);
     bson_oid_to_string(&oid, session_id);
-/*
-    bson_t *doc = bson_new();*/
+    /*
+       bson_t *doc = bson_new();*/
 
 
     intptr_t client_wsi_ptr = (intptr_t)client_wsi;
@@ -79,12 +79,12 @@ char *insert_session(struct libwebsocket *fileserver_wsi, struct libwebsocket *c
     bson_append_array(&insert_bson, "files", strlen("files"), (const bson_t *)&file_array_bson);
 
     /*
-    BSON_APPEND_UTF8 (doc, "session_id", session_id);
-    BSON_APPEND_INT32 (doc, "client_wsi", client_wsi_ptr);
-    BSON_APPEND_INT32 (doc, "fileserver_wsi", fileserver_wsi_ptr);
-    BSON_APPEND_UTF8 (doc, "repo_name", repo_name);
-    BSON_APPEND_INT32 (doc, "state", state);
-    */
+       BSON_APPEND_UTF8 (doc, "session_id", session_id);
+       BSON_APPEND_INT32 (doc, "client_wsi", client_wsi_ptr);
+       BSON_APPEND_INT32 (doc, "fileserver_wsi", fileserver_wsi_ptr);
+       BSON_APPEND_UTF8 (doc, "repo_name", repo_name);
+       BSON_APPEND_INT32 (doc, "state", state);
+       */
     if (!mongoc_collection_insert (session_coll, MONGOC_INSERT_NONE, &insert_bson, NULL, &error)){
 #ifdef DEBUG_META
         fprintf (stderr, "METADATA_SERVER: insert_session(): %s\n", error.message);
@@ -201,24 +201,24 @@ struct session_info_t *get_session(char *session_id)
     else{
         char *find_context_str;
         find_context_str = bson_as_json(find_context, NULL);
-        
+
         json_error_t *err = NULL;
         json_t *find_context_json = json_loads((const char *)find_context_str, JSON_DECODE_ANY, err);
-        
+
         json_t *fileserver_wsi_json = json_object_get(find_context_json, "fileserver_wsi");
         json_t *client_wsi_json = json_object_get(find_context_json, "client_wsi");
         json_t *repo_name_json = json_object_get(find_context_json, "repo_name");
         json_t *files_json = json_object_get(find_context_json, "files");
 
         session = (struct session_info_t *)calloc(1, sizeof(struct session_info_t));
-        
+
         intptr_t fileserver_wsi_ptr = (intptr_t)((int)json_integer_value(fileserver_wsi_json));
         session->fileserver_wsi = (struct libwebsocket *)fileserver_wsi_ptr;
         intptr_t client_wsi_ptr = (intptr_t)json_integer_value(client_wsi_json);
         session->client_wsi = (struct libwebsocket *) client_wsi_ptr;
         strcpy(session->repo_name, json_string_value(repo_name_json));
         strcpy(session->files, json_dumps(files_json, 0));
-        
+
         json_decref(files_json);
         json_decref(repo_name_json);
         json_decref(client_wsi_json);
@@ -226,8 +226,8 @@ struct session_info_t *get_session(char *session_id)
 
         bson_free(find_context_str);
 
-/*        
-        bson_t *doc;
+        /*        
+                  bson_t *doc;
         //libbon is hard to use, I(uniray7) use jansson instead
         session = (struct session_info_t *)calloc(1, sizeof(struct session_info_t));
         bson_iter_t iter, value;
@@ -320,6 +320,12 @@ struct libwebsocket* get_wsi(char *fileserver_name)
     }
 }
 
+json_t *join_checksum_arrays(json_t *array_json_A, json_t *array_json_B)
+{
+
+
+}
+
 static int callback_http(struct libwebsocket_context *context,
         struct libwebsocket *wsi,
         enum libwebsocket_callback_reasons reason, void *user,
@@ -343,7 +349,8 @@ static int callback_SDP(struct libwebsocket_context *context,
     switch (reason) {
         case LWS_CALLBACK_ESTABLISHED:
             {
-                fprintf(stderr, "\nMETADATA_SERVER: LWS_CALLBACK_ESTABLISHED\n");
+                fprintf(stderr, "==================================================================\n");
+                fprintf(stderr, "METADATA_SERVER: LWS_CALLBACK_ESTABLISHED\n");
                 /* initial write data */
                 struct writedata_info_t *write_data = (struct writedata_info_t *)calloc(1, sizeof(struct writedata_info_t));
                 *write_data_ptr = write_data;
@@ -388,7 +395,7 @@ static int callback_SDP(struct libwebsocket_context *context,
                             strcpy(write_data->data, sent_data_str);
 
                             libwebsocket_callback_on_writable(context, wsi);
-                           
+
                             json_decref(recvd_session_JData);   
                             json_decref(sent_session_JData);
                             free(sent_data_str);
@@ -475,7 +482,7 @@ static int callback_SDP(struct libwebsocket_context *context,
                             strcpy(write_data->data, sent_data_str);
 
                             libwebsocket_callback_on_writable(context, wsi);
-                   
+
                             json_decref(recvd_session_JData);   
                             json_decref(sent_session_JData);
                             free(sent_data_str);
@@ -486,7 +493,6 @@ static int callback_SDP(struct libwebsocket_context *context,
                              * */ 
                             break;
                         }
-
                     case SY_CONNECT:
                         {
                             fprintf(stderr, "METADATA_SERVER: receive SY_CONNECT\n");
@@ -520,14 +526,14 @@ static int callback_SDP(struct libwebsocket_context *context,
                             json_object_set_new(sent_session_JData, "metadata_type", json_integer(SY_CONNECT_OK));
                             json_object_set_new(sent_session_JData, "session_id", json_string(session_id));
                             sent_data_str = json_dumps(sent_session_JData, 0);
-                            
+
                             struct writedata_info_t *write_data = *write_data_ptr;
                             write_data->target_wsi = client_wsi;
                             write_data->type = SY_CONNECT_OK;
                             strcpy(write_data->data, sent_data_str);
-                           
+
                             libwebsocket_callback_on_writable(context, wsi);
-                            
+
                             json_decref(recvd_session_JData);   
                             json_decref(sent_session_JData);
                             free(sent_data_str);
@@ -577,19 +583,73 @@ static int callback_SDP(struct libwebsocket_context *context,
                     case FS_STATUS_OK:
                         {
                             fprintf(stderr, "METADATA_SERVER: receive fileserver checksum\n%s\n\n", recvd_data_str);
-                            
                             /* get session info */
-                            char *session_id, *files;
+                            char *session_id;
                             json_unpack(recvd_session_JData, "{s:s}", "session_id", &session_id);
                             struct session_info_t *session = get_session(session_id);
-                            
-                            /* get the fs checksum from the session*/
-                            json_t *files_json = json_object_get(recvd_session_JData, "files");
-                            /* get the client checksum from the session*/
 
-                            /* update fs checksum in the field */
-                            /* get client checksum in the DIFF field */
+                            /* get the fs checksum from the session*/
+                            json_t *fs_checksum_array_json = json_object_get(recvd_session_JData, "files");
+
+                            /* get the client checksum from the session*/
+                            json_t *client_checksum_array_json = json_loads((const char *)session->files, JSON_DECODE_ANY, err);
+
+
+
+                            json_t * file_array_json = join_checksum_arrays(fs_checksum_array_json, client_checksum_array_json);
+
+                            fgetc(stdin);
+                            exit(1);
+                            /* composite client_checksum_json and fs_checksum_json into files_checksum_json 
+                             * TODO: this part is a little complicated, need to refactor later */
+/*
+                            json_t *file_array_json, *file_element_json, *fs_checksum_element_json;
+                            size_t file_array_index, fs_checksum_array_index, file_array_size;
+                            char *filename, *fs_filename, *client_checksum, *fs_checksum;
+                            file_array_json = client_checksum_array_json;
+                            file_array_size = json_array_size(file_array_json);
+
+                            char *filesss = json_dumps(file_array_json, 0);
+                            printf("files:%s\n", filesss);
+
+                            json_array_foreach(file_array_json, file_array_index, file_element_json){
+                                json_object_set(file_element_json, "fs_checksum", json_string(""));
+                            }
+
+                            json_array_foreach(fs_checksum_array_json, fs_checksum_array_index, fs_checksum_element_json){
+                                // extract the fs_filename and fs_checksum
+                                json_unpack(fs_checksum_element_json, "{s:s, s:s}", "filename", &fs_filename, "fs_checksum", &fs_checksum);
+                                // check the fs_filename is existed in file_array_json
+                                json_array_foreach(file_array_json, file_array_index, file_element_json){
+                                    json_unpack(file_element_json, "{s:s, s:s}", "filename", &filename, "client_checksum", &client_checksum);
+                                    // if the fs_filename is existed in file_array_json, insert fs_checksum in it
+                                    if(strcmp(filename, fs_filename) == 0)
+                                    { 
+                                        json_object_set(file_element_json, "fs_checksum", json_string(fs_checksum));
+                                        break; 
+                                    }
+                                }
+
+                                // if fs_filename is not in file_array_json, append in file_array_json
+                                if(file_array_index == file_array_size)
+                                {
+                                    json_t *new_element_json = json_copy(fs_checksum_element_json);
+                                    json_object_set(new_element_json, "client_checksum", json_string(""));
+                                    json_array_append(file_array_json, new_element_json);
+                                    file_array_size++;
+                                }
+                            }
+
+
+                            filesss = json_dumps(file_array_json, 0);
+                            printf("\nfiles:%s\n", filesss);
+*/
+                            json_array_clear(client_checksum_array_json);
+                            json_array_clear(fs_checksum_array_json);
                             /* compare fs and client checksum to find out which file is dirty */
+
+
+                            /* update fs checksum in the field and DIFF */
                             /* send SY_STATUS_OK and a list of dirty file*/
                             break;
                         }
@@ -605,11 +665,11 @@ static int callback_SDP(struct libwebsocket_context *context,
                 struct writedata_info_t *write_data = *write_data_ptr;
                 if((data_len = strlen(write_data->data)) >0 )
                 {   
-                   lws_err = libwebsocket_write(write_data->target_wsi, (void *)write_data->data, data_len, LWS_WRITE_TEXT);
+                    lws_err = libwebsocket_write(write_data->target_wsi, (void *)write_data->data, data_len, LWS_WRITE_TEXT);
 #ifdef DEBUG_META
-                   fprintf(stderr, "METADATA_SERVER: write data:%s\n", write_data->data);
+                    fprintf(stderr, "METADATA_SERVER: write data:%s\n", write_data->data);
 #endif
-                   switch(write_data->type){
+                    switch(write_data->type){
                         case(FS_REGISTER_OK_t):
                             {
 #ifdef DEBUG_META
@@ -645,10 +705,10 @@ static int callback_SDP(struct libwebsocket_context *context,
                         case(SY_CONNECT_OK):
                             {
 #ifdef DEBUG_META
-                            if(lws_err<0)
-                                fprintf(stderr, "METADATA_SERVER: send SY_CONNECT_OK to client fail\n");
-                            else
-                                fprintf(stderr, "METADATA_SERVER: send SY_CONNECT_OK to client\n");
+                                if(lws_err<0)
+                                    fprintf(stderr, "METADATA_SERVER: send SY_CONNECT_OK to client fail\n");
+                                else
+                                    fprintf(stderr, "METADATA_SERVER: send SY_CONNECT_OK to client\n");
 #endif
                                 break;
                             }

@@ -278,10 +278,10 @@ static int callback_fileserver(struct libwebsocket_context *context,
                                     if(strcmp((const char*)ep->d_name, ".") && strcmp((const char*)ep->d_name, "..") != 0)
                                     {
                                         json_t *file_json = json_object();
-                                        printf("%s\n", (ep->d_name));
+                                        //printf("%s\n", (ep->d_name));
                                         /* calculate the file checksum and put it in json object */
                                         char *file_md5 = gen_md5(ep->d_name);
-                                        printf("%s\n", file_md5);
+                                        //printf("%s\n", file_md5);
                                         json_object_set_new(file_json, "filename", json_string(ep->d_name));
                                         json_object_set_new(file_json, "fs_checksum", json_string(file_md5));
                                         json_array_append(json_arr, file_json);
