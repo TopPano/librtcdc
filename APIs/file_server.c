@@ -36,7 +36,6 @@ char *gen_md5(char *filename)
     {
         while ((nread = fread(buf, 1, sizeof buf, pFile)) > 0)
         {    
-            fwrite(buf, nread, 1, stdout); 
             memset(buf, 0, LINE_SIZE);
             MD5_Update(&ctx, (const void *)buf, nread);
         }
@@ -280,7 +279,12 @@ static int callback_fileserver(struct libwebsocket_context *context,
                                         json_t *file_json = json_object();
                                         //printf("%s\n", (ep->d_name));
                                         /* calculate the file checksum and put it in json object */
-                                        char *file_md5 = gen_md5(ep->d_name);
+                                        char file_path[128];
+                                        memset(file_path, 0, 128);
+                                        strcpy(file_path, repo_path);
+                                        strcat(file_path, "/");
+                                        strcat(file_path, ep->d_name);
+                                        char *file_md5 = gen_md5(file_path);
                                         //printf("%s\n", file_md5);
                                         json_object_set_new(file_json, "filename", json_string(ep->d_name));
                                         json_object_set_new(file_json, "fs_checksum", json_string(file_md5));
@@ -330,7 +334,7 @@ static struct libwebsocket_protocols fileserver_protocols[] = {
 
 int main(int argc, char *argv[]){
     // initial signaling
-    const char *address = "140.112.90.37";
+    const char *address = "localhost";
     int port = 7681;
     signal_conn = signal_initial(address, port, fileserver_protocols, "fileserver-protocol");
     struct libwebsocket_context *context = signal_conn->context;

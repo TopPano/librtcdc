@@ -62,11 +62,6 @@ struct conn_info_t{
     volatile uint8_t *exit;
 };
 
-struct diff_info_t{
-    char filename[NAMESIZE];
-    int dirty;
-    /* 1 is dirty, while 0 is not */
-};
 
 /* for signal_server
 struct signal_session_data_t{

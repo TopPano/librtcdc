@@ -126,8 +126,9 @@ uint8_t update_session(char *session_id, char *field, void *value)
     query = BCON_NEW ("session_id", BCON_UTF8(session_id));
 
     if(strcmp(field, "client_wsi") == 0){
+        intptr_t client_wsi_ptr = (intptr_t)value;
         update = BCON_NEW ("$set", "{",
-                "client_wsi", BCON_INT32 (*(int *)value),
+                "client_wsi", BCON_INT32 (client_wsi_ptr),
                 "}");
     }
     else if (strcmp(field, "state") == 0){
@@ -160,6 +161,35 @@ uint8_t update_session(char *session_id, char *field, void *value)
         bson_append_document_end(&update_bson, &set_bson);
 
         update = &update_bson;
+    }
+    else if (strcmp(field, "files") == 0)
+    {
+        json_t *file_array_json = (json_t *)value;
+        size_t index;
+        json_t *file_json;
+        bson_t update_bson, set_bson, file_array_bson, file_bson;
+        char *filename, *client_checksum, *fs_checksum;
+        
+        bson_init(&update_bson);
+        bson_init(&set_bson);
+        bson_init(&file_array_bson);
+        bson_init(&file_bson);
+        bson_append_document_begin(&update_bson, "$set", 4, &set_bson);
+        json_array_foreach(file_array_json, index, file_json){
+            json_unpack(file_json, "{s:s, s:s, s:s}", "filename", &filename, "client_checksum", &client_checksum, "fs_checksum", &fs_checksum);
+            bson_reinit(&file_bson);
+            bson_append_utf8(&file_bson, "filename", 8, filename, strlen(filename));
+            bson_append_utf8(&file_bson, "client_checksum", 15, client_checksum, strlen(client_checksum));
+            bson_append_utf8(&file_bson, "fs_checksum", 11, fs_checksum, strlen(fs_checksum));
+            bson_append_document(&file_array_bson, NULL, 0, (const bson_t *)&file_bson);
+        }
+
+        bson_append_array(&set_bson, "files", 5, (const bson_t*)&file_array_bson) ;
+        bson_append_document_end(&update_bson, &set_bson);
+
+        update = &update_bson;
+
+
     }
     else{
 #ifdef DEBUG_META
@@ -320,10 +350,49 @@ struct libwebsocket* get_wsi(char *fileserver_name)
     }
 }
 
-json_t *join_checksum_arrays(json_t *array_json_A, json_t *array_json_B)
+/* TODO: it needs to check unfreed memory */
+json_t *join_checksum_arrays(char *pivot_key, json_t *A_array_json, char *A_key, json_t *B_array_json, char *B_key)
 {
+    json_t *file_array_json = json_array();
+    json_t *A_element_json, *B_element_json, *file_element_json; 
+    size_t A_array_index, B_array_index, file_array_index, file_array_size;
+    char *filename, *A_checksum, *B_checksum;
 
+    // copy A_array_json to file_array_json
+    json_array_foreach(A_array_json, A_array_index, A_element_json){
+        file_element_json = json_copy(A_element_json);
+        json_object_set(file_element_json, B_key, json_string(""));
+        json_array_append(file_array_json, file_element_json);
+    }
 
+    file_array_size = json_array_size(file_array_json);
+    // B_array_json join into file_array_json
+    json_array_foreach(B_array_json, B_array_index, B_element_json){
+        // extract the filename and B_checksum
+        json_unpack(B_element_json, "{s:s, s:s}", pivot_key, &filename, B_key, &B_checksum);
+
+        // check the filename is existed in file_array_json
+        json_array_foreach(file_array_json, file_array_index, file_element_json){
+            // if the filename is existed in file_array_json, insert B_checksum in it 
+            if(strcmp(json_string_value(json_object_get(file_element_json, pivot_key)), filename) == 0)
+            {
+                json_object_set(file_element_json, B_key, json_string(B_checksum));
+                break;
+            }
+        }
+
+        // if the filename is not existed in file_array_json, append it
+        if(file_array_index == file_array_size)
+        {
+            json_t *new_element_json = json_copy(B_element_json);
+            json_object_set(new_element_json, A_key, json_string(""));
+            json_array_append(file_array_json, new_element_json);
+            file_array_size++;
+        } 
+
+    }
+
+    return file_array_json;
 }
 
 static int callback_http(struct libwebsocket_context *context,
@@ -562,7 +631,7 @@ static int callback_SDP(struct libwebsocket_context *context,
                             }
 
                             /* update client_wsi*/
-                            if(update_session(session_id, "client_wsi", (void *)((intptr_t)wsi)) == 0){
+                            if(update_session(session_id, "client_wsi", (void *)wsi) == 0){
                                 /* TODO: if update failed, what to do? */
                             }
 
@@ -575,6 +644,7 @@ static int callback_SDP(struct libwebsocket_context *context,
                             struct writedata_info_t *write_data = *write_data_ptr;
                             strcpy(write_data->data, json_dumps(sent_session_JData, 0));
                             write_data->target_wsi = session->fileserver_wsi;
+                            write_data->type = SY_STATUS;
                             free(sent_session_JData);
                             libwebsocket_callback_on_writable(context, wsi);
 
@@ -594,63 +664,49 @@ static int callback_SDP(struct libwebsocket_context *context,
                             /* get the client checksum from the session*/
                             json_t *client_checksum_array_json = json_loads((const char *)session->files, JSON_DECODE_ANY, err);
 
-
-
-                            json_t * file_array_json = join_checksum_arrays(fs_checksum_array_json, client_checksum_array_json);
-
-                            fgetc(stdin);
-                            exit(1);
-                            /* composite client_checksum_json and fs_checksum_json into files_checksum_json 
-                             * TODO: this part is a little complicated, need to refactor later */
-/*
-                            json_t *file_array_json, *file_element_json, *fs_checksum_element_json;
-                            size_t file_array_index, fs_checksum_array_index, file_array_size;
-                            char *filename, *fs_filename, *client_checksum, *fs_checksum;
-                            file_array_json = client_checksum_array_json;
-                            file_array_size = json_array_size(file_array_json);
-
-                            char *filesss = json_dumps(file_array_json, 0);
-                            printf("files:%s\n", filesss);
-
-                            json_array_foreach(file_array_json, file_array_index, file_element_json){
-                                json_object_set(file_element_json, "fs_checksum", json_string(""));
-                            }
-
-                            json_array_foreach(fs_checksum_array_json, fs_checksum_array_index, fs_checksum_element_json){
-                                // extract the fs_filename and fs_checksum
-                                json_unpack(fs_checksum_element_json, "{s:s, s:s}", "filename", &fs_filename, "fs_checksum", &fs_checksum);
-                                // check the fs_filename is existed in file_array_json
-                                json_array_foreach(file_array_json, file_array_index, file_element_json){
-                                    json_unpack(file_element_json, "{s:s, s:s}", "filename", &filename, "client_checksum", &client_checksum);
-                                    // if the fs_filename is existed in file_array_json, insert fs_checksum in it
-                                    if(strcmp(filename, fs_filename) == 0)
-                                    { 
-                                        json_object_set(file_element_json, "fs_checksum", json_string(fs_checksum));
-                                        break; 
-                                    }
-                                }
-
-                                // if fs_filename is not in file_array_json, append in file_array_json
-                                if(file_array_index == file_array_size)
-                                {
-                                    json_t *new_element_json = json_copy(fs_checksum_element_json);
-                                    json_object_set(new_element_json, "client_checksum", json_string(""));
-                                    json_array_append(file_array_json, new_element_json);
-                                    file_array_size++;
-                                }
-                            }
-
-
-                            filesss = json_dumps(file_array_json, 0);
-                            printf("\nfiles:%s\n", filesss);
-*/
+                            /* composite client_checksum_json and fs_checksum_json into files_checksum_json */
+                            json_t * file_array_json = join_checksum_arrays("filename", fs_checksum_array_json, "fs_checksum", client_checksum_array_json, "client_checksum");
                             json_array_clear(client_checksum_array_json);
                             json_array_clear(fs_checksum_array_json);
+                            
+                            
+                            /* update fs checksum in the field*/
+                            if(update_session(session_id, "files", (void *)file_array_json) == 0){
+                                /* TODO: if update failed, what to do? */
+                            }
+
+                            size_t file_array_size = json_array_size(file_array_json);
                             /* compare fs and client checksum to find out which file is dirty */
+                            json_t *file_element_json;
+                            size_t file_array_index;
+                            const char *filename, *client_checksum, *fs_checksum;
 
+                            json_t *sent_session_JData = json_object();
+                            json_t *sent_array = json_array();
+                            json_array_foreach(file_array_json, file_array_index, file_element_json){
+                                filename = json_string_value(json_object_get(file_element_json, "filename"));
+                                client_checksum = json_string_value(json_object_get(file_element_json, "client_checksum"));
+                                fs_checksum = json_string_value(json_object_get(file_element_json, "fs_checksum"));
 
-                            /* update fs checksum in the field and DIFF */
+                                json_t *sent_element = json_object();
+                                json_object_set_new(sent_element, "filename", json_string(filename));
+
+                                if(strcmp(client_checksum, fs_checksum) == 0)
+                                    json_object_set_new(sent_element, "dirty", json_integer(0));
+                                else
+                                    json_object_set_new(sent_element, "dirty", json_integer(1));
+                                json_array_append(sent_array, sent_element); 
+                            }
+
                             /* send SY_STATUS_OK and a list of dirty file*/
+                            json_object_set_new(sent_session_JData, "metadata_type", json_integer(SY_STATUS_OK));
+                            json_object_set_new(sent_session_JData, "session_id", json_string(session_id));
+                            json_object_set_new(sent_session_JData, "files", sent_array);
+                            struct writedata_info_t *write_data = *write_data_ptr;
+                            strcpy(write_data->data, json_dumps(sent_session_JData, 0));
+                            write_data->target_wsi = session->client_wsi;
+                            write_data->type = SY_STATUS_OK;
+                            libwebsocket_callback_on_writable(context, wsi);
                             break;
                         }
                     default:
@@ -665,6 +721,7 @@ static int callback_SDP(struct libwebsocket_context *context,
                 struct writedata_info_t *write_data = *write_data_ptr;
                 if((data_len = strlen(write_data->data)) >0 )
                 {   
+                    
                     lws_err = libwebsocket_write(write_data->target_wsi, (void *)write_data->data, data_len, LWS_WRITE_TEXT);
 #ifdef DEBUG_META
                     fprintf(stderr, "METADATA_SERVER: write data:%s\n", write_data->data);
@@ -713,8 +770,14 @@ static int callback_SDP(struct libwebsocket_context *context,
                                 break;
                             }
 
-                        case(FS_STATUS_OK):
+                        case(SY_STATUS_OK):
                             {
+#ifdef DEBUG_META
+                                if(lws_err<0)
+                                    fprintf(stderr, "METADATA_SERVER: send SY_STATUS_OK to client fail\n");
+                                else
+                                    fprintf(stderr, "METADATA_SERVER: send SY_STATUS_OK to client\n");
+#endif
                                 break;
                             }
                         default:
