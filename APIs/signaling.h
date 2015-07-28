@@ -79,7 +79,11 @@ struct signal_session_data_t{
 };
 */
 
-struct conn_info_t* signal_initial(const char *address, int port, struct libwebsocket_protocols protocols[], char *protocol_name);
+struct conn_info_t* signal_initial(const char *address, 
+                                    int port, 
+                                    struct libwebsocket_protocols protocols[], 
+                                    char *protocol_name, 
+                                    void *user_data);
 
 char *signal_getline(char **string);
 

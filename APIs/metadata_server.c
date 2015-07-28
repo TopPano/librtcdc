@@ -438,7 +438,6 @@ static int callback_SDP(struct libwebsocket_context *context,
             {
                 int metadata_type ,lws_err;
                 char *recvd_data_str = (char *)in;
-                char *sent_data_str = NULL;
                 json_t *recvd_session_JData = NULL;
                 json_error_t *err = NULL;
                 recvd_session_JData = json_loads((const char *)recvd_data_str, JSON_DECODE_ANY, err);
@@ -456,7 +455,7 @@ static int callback_SDP(struct libwebsocket_context *context,
                             json_t *sent_session_JData = json_object();
                             json_object_set_new(sent_session_JData, "metadata_type", json_integer(FS_REGISTER_OK_t));
                             json_object_set_new(sent_session_JData, "fileserver_dns", json_string("toppano://server1.tw"));
-                            sent_data_str = json_dumps(sent_session_JData, 0);
+                            char *sent_data_str = json_dumps(sent_session_JData, 0);
 
                             struct writedata_info_t *write_data = *write_data_ptr;
                             write_data->target_wsi = wsi;
@@ -493,7 +492,7 @@ static int callback_SDP(struct libwebsocket_context *context,
                             json_object_set_new(sent_session_JData, "metadata_type", json_integer(SY_INIT));
                             json_object_set_new(sent_session_JData, "repo_name", json_string(repo_name));
                             json_object_set_new(sent_session_JData, "session_id", json_string(session_id));
-                            sent_data_str = json_dumps(sent_session_JData, 0);
+                            char *sent_data_str = json_dumps(sent_session_JData, 0);
 
                             struct writedata_info_t *write_data = *write_data_ptr;
                             write_data->target_wsi = fileserver_wsi;
@@ -502,6 +501,7 @@ static int callback_SDP(struct libwebsocket_context *context,
 
                             libwebsocket_callback_on_writable(context, wsi);
 
+                            /* free memory */
                             json_decref(recvd_session_JData);   
                             json_decref(sent_session_JData);
                             free(sent_data_str);
@@ -543,7 +543,7 @@ static int callback_SDP(struct libwebsocket_context *context,
                             json_object_set_new(sent_session_JData, "metadata_type", json_integer(SY_INIT_OK));
                             json_object_set_new(sent_session_JData, "URI_code", json_string(URI_code));
                             json_object_set_new(sent_session_JData, "session_id", json_string(session_id));
-                            sent_data_str = json_dumps(sent_session_JData, 0);
+                            char *sent_data_str = json_dumps(sent_session_JData, 0);
 
                             struct writedata_info_t *write_data = *write_data_ptr;
                             write_data->target_wsi = session->client_wsi;
@@ -594,7 +594,7 @@ static int callback_SDP(struct libwebsocket_context *context,
                             json_t *sent_session_JData = json_object();
                             json_object_set_new(sent_session_JData, "metadata_type", json_integer(SY_CONNECT_OK));
                             json_object_set_new(sent_session_JData, "session_id", json_string(session_id));
-                            sent_data_str = json_dumps(sent_session_JData, 0);
+                            char *sent_data_str = json_dumps(sent_session_JData, 0);
 
                             struct writedata_info_t *write_data = *write_data_ptr;
                             write_data->target_wsi = client_wsi;
@@ -640,14 +640,19 @@ static int callback_SDP(struct libwebsocket_context *context,
                             json_object_set_new(sent_session_JData, "metadata_type", json_integer(SY_STATUS));
                             json_object_set_new(sent_session_JData, "session_id", json_string(session_id));
                             json_object_set_new(sent_session_JData, "repo_name", json_string(session->repo_name));
-
+                            char *sent_data_str = json_dumps(sent_session_JData, 0);
+                            
                             struct writedata_info_t *write_data = *write_data_ptr;
-                            strcpy(write_data->data, json_dumps(sent_session_JData, 0));
+                            strcpy(write_data->data, sent_data_str);
                             write_data->target_wsi = session->fileserver_wsi;
                             write_data->type = SY_STATUS;
-                            free(sent_session_JData);
+ 
                             libwebsocket_callback_on_writable(context, wsi);
-
+ 
+                            /* free memory */
+                            json_decref(recvd_session_JData);   
+                            json_decref(sent_session_JData);
+                            free(sent_data_str);
                             break; 
                         } 
                     case FS_STATUS_OK:
@@ -706,11 +711,47 @@ static int callback_SDP(struct libwebsocket_context *context,
                             json_object_set_new(sent_session_JData, "metadata_type", json_integer(SY_STATUS_OK));
                             json_object_set_new(sent_session_JData, "session_id", json_string(session_id));
                             json_object_set_new(sent_session_JData, "files", sent_array);
+                            char *sent_data_str = json_dumps(sent_session_JData, 0);
+                            
                             struct writedata_info_t *write_data = *write_data_ptr;
-                            strcpy(write_data->data, json_dumps(sent_session_JData, 0));
+                            strcpy(write_data->data, sent_data_str);
                             write_data->target_wsi = session->client_wsi;
                             write_data->type = SY_STATUS_OK;
+                            
                             libwebsocket_callback_on_writable(context, wsi);
+                            
+                            /* free memory */
+                            json_decref(recvd_session_JData);   
+                            json_decref(sent_session_JData);
+                            free(sent_data_str);
+                            break;
+                        }
+                    case SY_UPLOAD:
+                        {
+                            fprintf(stderr, "METADATA_SERVER: receive SY_UPLOAD\n%s\n\n", recvd_data_str);
+                            
+                            /* get session info */
+                            char *session_id;
+                            json_unpack(recvd_session_JData, "{s:s}", "session_id", &session_id);
+                            struct session_info_t *session = get_session(session_id);
+                        
+
+                            /* send SY_UPLOAD, repo_name, client_SDP, client_candidate to fileserver */
+                            json_t *sent_session_JData = json_deep_copy(recvd_session_JData);
+                            json_object_set_new(sent_session_JData, "metadata_type", json_integer(SY_UPLOAD));
+                            json_object_set_new(sent_session_JData, "repo_name", json_string(session->repo_name));
+                            char *sent_data_str = json_dumps(sent_session_JData, 0);
+
+                            struct writedata_info_t *write_data = *write_data_ptr;
+                            strcpy(write_data->data, sent_data_str);
+                            write_data->target_wsi = session->fileserver_wsi;
+                            write_data->type = SY_UPLOAD;
+                           
+                            libwebsocket_callback_on_writable(context, wsi);
+                            /* free memory */
+                            json_decref(recvd_session_JData);   
+                            json_decref(sent_session_JData);
+                            free(sent_data_str);
                             break;
                         }
                     default:
@@ -725,7 +766,6 @@ static int callback_SDP(struct libwebsocket_context *context,
                 struct writedata_info_t *write_data = *write_data_ptr;
                 if((data_len = strlen(write_data->data)) >0 )
                 {   
-                    
                     lws_err = libwebsocket_write(write_data->target_wsi, (void *)write_data->data, data_len, LWS_WRITE_TEXT);
 #ifdef DEBUG_META
                     fprintf(stderr, "METADATA_SERVER: write data:%s\n", write_data->data);
@@ -741,7 +781,6 @@ static int callback_SDP(struct libwebsocket_context *context,
 #endif
                                 break; 
                             }
-
                         case(SY_INIT):
                             {
 #ifdef DEBUG_META
@@ -762,7 +801,6 @@ static int callback_SDP(struct libwebsocket_context *context,
 #endif
                                 break;
                             }
-
                         case(SY_CONNECT_OK):
                             {
 #ifdef DEBUG_META
@@ -773,7 +811,16 @@ static int callback_SDP(struct libwebsocket_context *context,
 #endif
                                 break;
                             }
-
+                        case(SY_STATUS):
+                            {
+#ifdef DEBUG_META
+                                if(lws_err<0)
+                                    fprintf(stderr, "METADATA_SERVER: send SY_STATUS to fileserver fail\n");
+                                else
+                                    fprintf(stderr, "METADATA_SERVER: send SY_STATUS to fileserver\n");
+#endif
+                                break;
+                            }
                         case(SY_STATUS_OK):
                             {
 #ifdef DEBUG_META
@@ -784,7 +831,17 @@ static int callback_SDP(struct libwebsocket_context *context,
 #endif
                                 break;
                             }
-                        default:
+                        case(SY_UPLOAD):
+                            {
+#ifdef DEBUG_META
+                                if(lws_err<0)
+                                    fprintf(stderr, "METADATA_SERVER: send SY_UPLOAD to fileserver fail\n");
+                                else
+                                    fprintf(stderr, "METADATA_SERVER: send SY_UPLOAD to fileserver\n");
+#endif
+                                break;
+                            }
+                       default:
                             break;
                     }
                 }

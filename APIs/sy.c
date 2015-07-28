@@ -11,6 +11,7 @@
 
 #include <rtcdc.h>
 #include "signaling.h"
+#include "signaling_rtcdc.h"
 #include "sy.h"
 
 #define LINE_SIZE 32
@@ -125,10 +126,12 @@ static int callback_client(struct libwebsocket_context *context,
                     case SY_CONNECT_OK:
                         fprintf(stderr,"SYCLIENT: receive SY_CONNECT_OK\n");
                         recvd_lws_JData = recvd_session_JData;
+                        return -1;
                         break;
                     case SY_STATUS_OK:
                         fprintf(stderr,"SYCLIENT: receive SY_STATUS_OK \n%s\n", session_SData);
                         recvd_lws_JData = recvd_session_JData;
+                        return -1;
                         break;
                     default:
                         break;
@@ -171,7 +174,7 @@ uint8_t sy_init(struct sy_session_t *sy_session, char *repo_name, char *local_re
     uint8_t metadata_type;
     char *session_id, *URI_code;
     struct conn_info_t *metadata_conn;
-    metadata_conn = signal_initial(metadata_server_IP, metadata_server_port, client_protocols, "client-protocol");
+    metadata_conn = signal_initial(metadata_server_IP, metadata_server_port, client_protocols, "client-protocol", NULL);
     struct libwebsocket_context *context = metadata_conn->context;
     struct libwebsocket *wsi = metadata_conn->wsi;
     volatile uint8_t client_exit = 0;
@@ -239,6 +242,7 @@ uint8_t sy_init(struct sy_session_t *sy_session, char *repo_name, char *local_re
     return SY_INIT_OK;
 }
 
+
 uint8_t sy_connect(struct sy_session_t *sy_session, char *URI_code, char *local_repo_path, char *api_key, char *token)
 {
 
@@ -248,7 +252,7 @@ uint8_t sy_connect(struct sy_session_t *sy_session, char *URI_code, char *local_
     char *session_id;
     struct conn_info_t *metadata_conn;
 
-    metadata_conn = signal_initial(metadata_server_IP, metadata_server_port, client_protocols, "client-protocol");
+    metadata_conn = signal_initial(metadata_server_IP, metadata_server_port, client_protocols, "client-protocol", NULL);
 
     struct libwebsocket_context *context = metadata_conn->context;
     struct libwebsocket *wsi = metadata_conn->wsi;
@@ -323,7 +327,7 @@ uint8_t sy_status(struct sy_session_t *sy_session, struct sy_diff_t *sy_session_
     uint8_t metadata_type;
     char *session_id, *URI_code;
     struct conn_info_t *metadata_conn;
-    metadata_conn = signal_initial(metadata_server_IP, metadata_server_port, client_protocols, "client-protocol");
+    metadata_conn = signal_initial(metadata_server_IP, metadata_server_port, client_protocols, "client-protocol", NULL);
     struct libwebsocket_context *context = metadata_conn->context;
     struct libwebsocket *wsi = metadata_conn->wsi;
     volatile uint8_t client_exit = 0;
@@ -410,6 +414,7 @@ uint8_t sy_status(struct sy_session_t *sy_session, struct sy_diff_t *sy_session_
     sy_session_diff->files_diff = files_diff;
     sy_session_diff->num = file_array_size;
 
+    uv_run(main_loop, UV_RUN_DEFAULT);
     /* free memory */
     usleep(1000);
     json_decref(sent_file_array_json);
@@ -425,8 +430,82 @@ uint8_t sy_status(struct sy_session_t *sy_session, struct sy_diff_t *sy_session_
 uint8_t sy_upload(struct sy_session_t *sy_session, struct sy_diff_t *sy_session_diff)
 {
     /* connect to metadata server*/
+    const char *metadata_server_IP = METADATA_SERVER_IP;
+    uint16_t metadata_server_port = 7681;
+    uint8_t metadata_type;
+    char *session_id, *URI_code;
+    struct conn_info_t *metadata_conn;
+    metadata_conn = signal_initial(metadata_server_IP, metadata_server_port, client_protocols, "client-protocol", NULL);
+    struct libwebsocket_context *context = metadata_conn->context;
+    struct libwebsocket *wsi = metadata_conn->wsi;
+    volatile uint8_t client_exit = 0;
+    metadata_conn->exit = &client_exit;
 
-    /* send request: upload files which the fileserver doesnt have*/
+    /* allocate a uv to run signal_connect() */
+    main_loop = uv_default_loop();
+    uv_work_t work;
+    work.data = (void *)metadata_conn;
+    uv_queue_work(main_loop, &work, uv_signal_connect, NULL);
+
+    /* gen rtcdc SDP and candidates */
+    char *client_SDP, *client_candidates;
+    client_candidates = (char *)calloc(1, DATASIZE);
+    struct rtcdc_peer_connection *offerer = rtcdc_create_peer_connection((void *)upload_client_on_channel, (void *)on_candidate, 
+                                                                        (void *)upload_client_on_connect,STUN_IP, 0, 
+                                                                        (void *)client_candidates);
+    client_SDP = rtcdc_generate_offer_sdp(offerer);
+    
+    /* send request: upload files which the fileserver doesnt have */
+    /* write SY_UPLOAD, SDP, candidate and session_id */
+    sent_lws_JData = json_object();
+    json_object_set_new(sent_lws_JData, "metadata_type", json_integer(SY_UPLOAD));
+    json_object_set_new(sent_lws_JData, "session_id", json_string(sy_session->session_id));
+    json_object_set_new(sent_lws_JData, "client_SDP", json_string(client_SDP));
+    json_object_set_new(sent_lws_JData, "client_candidates", json_string(client_candidates));
+    recvd_lws_JData = NULL;
+
+    usleep(100000);
+    libwebsocket_callback_on_writable(context, wsi);
+
+    /* wait for SY_UPLOAD_READY fs SDP and candidate */
+    /* TODO: here needs mutex */
+    while(1){
+        if(recvd_lws_JData != NULL){
+            json_unpack(recvd_lws_JData, "{s:i}", "metadata_type", &metadata_type);
+            if(metadata_type == SY_INIT_OK){
+                /* TODO:sy_init success, keep or close the libwebsocket connection?*/
+                client_exit = 1;
+                break;
+            }
+        }
+        usleep(1000);
+    }
+
+
+
+    /* close the libwebsocket connection and then start rtcdc connection*/
+
+    /* rtcdc connection*/
+
+
+    uv_run(main_loop, UV_RUN_DEFAULT);
+
+
+
+    /* free memory */
+    free(client_SDP);
+    free(client_candidates);
+    free(recvd_lws_JData);
+    free(sent_lws_JData); 
+    recvd_lws_JData = NULL;
+    sent_lws_JData = NULL;
+    uv_run(main_loop, UV_RUN_DEFAULT);
+
+    free(metadata_conn);
+    free(sent_lws_JData);
+    /* return METADATAtype */
+    return SY_UPLOAD_OK;
+
 }
 
 
@@ -442,8 +521,6 @@ int main(int argc, char *argv[]){
         fprintf(stderr, "sy_init finish\nsession_id:%s, URI_code:%s\n", sy_session->session_id, sy_session->URI_code);
     else
         fprintf(stderr, "sy_init failed\n");
-
-
 
     printf("\n");
     //   free(sy_session);
@@ -463,15 +540,15 @@ int main(int argc, char *argv[]){
        */
     struct sy_diff_t *sy_session_diff = sy_default_diff();
     sy_status(sy_session, sy_session_diff);
-
+/*
     int i;
     for(i=0;i<sy_session_diff->num;i++)
     {
         printf("filename:%s, dirty:%d\n", (sy_session_diff->files_diff[i]).filename, (sy_session_diff->files_diff[i]).dirty);
     }
-
-
+*/
     printf("\n");
+    
     sy_upload(sy_session, sy_session_diff);
     return 0;
 }

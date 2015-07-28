@@ -11,7 +11,7 @@
 #include <jansson.h>
 #include <sys/stat.h>
 #include "signaling.h"
-
+#include "signaling_rtcdc.h"
 #define WAREHOUSE_PATH "/home/uniray/warehouse/"
 #define LINE_SIZE 32
 
@@ -74,13 +74,6 @@ void on_channel(rtcdc_peer_connection *peer, rtcdc_data_channel* dc, void* user_
 }
 
 
-void on_candidate(rtcdc_peer_connection *peer, char *candidate, void *user_data ){
-    char *endl = "\n";
-    char *candidates = (char *)user_data;
-    candidates = strcat(candidates, candidate);
-    candidates = strcat(candidates, endl);
-}
-
 
 void on_connect(){
     fprintf(stderr, "on connect!\n");
@@ -94,7 +87,6 @@ void parse_candidates(rtcdc_peer_connection *peer, char *candidates)
         rtcdc_parse_candidate_sdp(peer, line);
         // printf("%s\n", line);
     }
-
 }
 
 
@@ -251,11 +243,11 @@ static int callback_fileserver(struct libwebsocket_context *context,
                     case SY_STATUS:
                         {
 #ifdef DEBUG_FS
-                            fprintf(stderr, "FILE_SERVER: receive SY_STATUS: %s\n", recvd_data_str);
+                            fprintf(stderr, "FILE_SERVER: receive SY_STATUS\n");
 #endif
                             char *repo_name, *session_id;
-                            char *repo_path = (char *)calloc(1, 128*sizeof(char));
                             json_unpack(recvd_session_JData, "{s:s, s:s}", "repo_name", &repo_name, "session_id", &session_id);
+                            char *repo_path = (char *)calloc(1, 128*sizeof(char));
                             strcpy(repo_path, WAREHOUSE_PATH);
                             strcat(repo_path, repo_name);
 
@@ -310,6 +302,44 @@ static int callback_fileserver(struct libwebsocket_context *context,
 
                             break;
                         }
+                    case SY_UPLOAD:
+                        {
+#ifdef DEBUG_FS
+                            fprintf(stderr, "FILE_SERVER: receive SY_UPLOAD: %s\n", recvd_data_str);
+#endif
+                            /* get repo_name, and strcat repo_path, get client_SDP and client_candidate */
+                            char *client_SDP, *client_candidates, *repo_name, *session_id;
+                            json_unpack(recvd_session_JData, "{s:s, s:s, s:s, s:s}", 
+                                        "client_SDP", &client_SDP,
+                                        "client_candidates", &client_candidates,
+                                        "repo_name", &repo_name, "session_id", &session_id);
+                            char *repo_path = (char *)calloc(1, 128*sizeof(char));
+                            strcpy(repo_path, WAREHOUSE_PATH);
+                            strcat(repo_path, repo_name);
+
+                            /* parse cleint_SDP and client_candidate*/
+                            char *fs_SDP, *fs_candidates;
+                            fs_candidates = (char *)calloc(1, DATASIZE);
+                            rtcdc_peer_connection * answerer = rtcdc_create_peer_connection((void *)upload_fs_on_channel,
+                                                                                            (void *)on_candidate,
+                                                                                            (void *)upload_fs_on_connect,
+                                                                                            STUN_IP, 0, fs_candidates);
+                            printf("client_SDP:%s\nclient_candidates:%s\n", client_SDP, client_candidates);
+                            rtcdc_parse_offer_sdp(answerer, client_SDP);
+                            parse_candidates(answerer, client_candidates);
+                            /* gen fs_SDP, fs_candidate */
+                            fs_SDP = rtcdc_generate_offer_sdp(answerer);
+                        
+
+                            printf("fs_SDP:%s\nfs_candidates:%s\n", fs_SDP, fs_candidates);
+                            /* send the fs_SDP, fs_candidate */
+
+                            /* run rtcdc_loop */
+
+                            /* TODO: when the rtcdc_loop terminate */
+
+                            break;
+                        }
                     default:
                         break;
                 }
@@ -336,7 +366,7 @@ int main(int argc, char *argv[]){
     // initial signaling
     const char *address = "localhost";
     int port = 7681;
-    signal_conn = signal_initial(address, port, fileserver_protocols, "fileserver-protocol");
+    signal_conn = signal_initial(address, port, fileserver_protocols, "fileserver-protocol", NULL);
     struct libwebsocket_context *context = signal_conn->context;
     fileserver_exit = 0;
     signal_connect(context, &fileserver_exit);
