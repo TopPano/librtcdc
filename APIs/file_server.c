@@ -353,7 +353,6 @@ static int callback_fileserver(struct libwebsocket_context *context,
 #ifdef DEBUG_FS
                             fprintf(stderr, "FILE_SERVER: FS_UPLOAD_READY: waiting rtcdc connection\n");
 #endif
-
                             /* allocate a uv to run rtcdc_loop */
                             uv_work_t work;
                             work.data = (void *)answerer;
