@@ -129,11 +129,16 @@ static int callback_client(struct libwebsocket_context *context,
                         return -1;
                         break;
                     case SY_STATUS_OK:
-                        fprintf(stderr,"SYCLIENT: receive SY_STATUS_OK \n%s\n", session_SData);
+                        fprintf(stderr,"SYCLIENT: receive SY_STATUS_OK\n");
                         recvd_lws_JData = recvd_session_JData;
                         return -1;
                         break;
-                    default:
+                    case FS_UPLOAD_READY:
+                        fprintf(stderr,"SYCLIENT: receive FS_UPLOAD_READY\n%s\n", session_SData);
+                        recvd_lws_JData = recvd_session_JData;
+                        return -1;
+                        break;
+                   default:
                         break;
                 }
             }
@@ -448,11 +453,11 @@ uint8_t sy_upload(struct sy_session_t *sy_session, struct sy_diff_t *sy_session_
     uv_queue_work(main_loop, &work, uv_signal_connect, NULL);
 
     /* gen rtcdc SDP and candidates */
-    char *client_SDP, *client_candidates;
-    client_candidates = (char *)calloc(1, DATASIZE);
+    char *client_SDP;
+    struct sy_rtcdc_info_t rtcdc_info;
     struct rtcdc_peer_connection *offerer = rtcdc_create_peer_connection((void *)upload_client_on_channel, (void *)on_candidate, 
                                                                         (void *)upload_client_on_connect,STUN_IP, 0, 
-                                                                        (void *)client_candidates);
+                                                                        (void *)&rtcdc_info);
     client_SDP = rtcdc_generate_offer_sdp(offerer);
     
     /* send request: upload files which the fileserver doesnt have */
@@ -461,7 +466,7 @@ uint8_t sy_upload(struct sy_session_t *sy_session, struct sy_diff_t *sy_session_
     json_object_set_new(sent_lws_JData, "metadata_type", json_integer(SY_UPLOAD));
     json_object_set_new(sent_lws_JData, "session_id", json_string(sy_session->session_id));
     json_object_set_new(sent_lws_JData, "client_SDP", json_string(client_SDP));
-    json_object_set_new(sent_lws_JData, "client_candidates", json_string(client_candidates));
+    json_object_set_new(sent_lws_JData, "client_candidates", json_string(rtcdc_info.local_candidates));
     recvd_lws_JData = NULL;
 
     usleep(100000);
@@ -469,32 +474,34 @@ uint8_t sy_upload(struct sy_session_t *sy_session, struct sy_diff_t *sy_session_
 
     /* wait for SY_UPLOAD_READY fs SDP and candidate */
     /* TODO: here needs mutex */
+    json_t *sy_upload_json;
     while(1){
         if(recvd_lws_JData != NULL){
             json_unpack(recvd_lws_JData, "{s:i}", "metadata_type", &metadata_type);
-            if(metadata_type == SY_INIT_OK){
+            if(metadata_type == FS_UPLOAD_READY){
                 /* TODO:sy_init success, keep or close the libwebsocket connection?*/
+                sy_upload_json = json_deep_copy(recvd_lws_JData); 
                 client_exit = 1;
                 break;
             }
         }
         usleep(1000);
     }
-
-
-
     /* close the libwebsocket connection and then start rtcdc connection*/
+    /* parse fs_SDP and fs_candidates */
+    char *fs_SDP = (char *)json_string_value(json_object_get(sy_upload_json, "fs_SDP"));
+    char *fs_candidates = (char *)json_string_value(json_object_get(sy_upload_json, "fs_candidates"));
 
+    rtcdc_parse_offer_sdp(offerer, fs_SDP);
+    parse_candidates(offerer, fs_candidates);
     /* rtcdc connection*/
-
-
+    
+    rtcdc_loop(offerer);
+    /* TODO: when the rtcdc_loop terminate? */
     uv_run(main_loop, UV_RUN_DEFAULT);
-
-
 
     /* free memory */
     free(client_SDP);
-    free(client_candidates);
     free(recvd_lws_JData);
     free(sent_lws_JData); 
     recvd_lws_JData = NULL;
@@ -505,7 +512,6 @@ uint8_t sy_upload(struct sy_session_t *sy_session, struct sy_diff_t *sy_session_
     free(sent_lws_JData);
     /* return METADATAtype */
     return SY_UPLOAD_OK;
-
 }
 
 

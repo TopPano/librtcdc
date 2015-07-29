@@ -3,24 +3,7 @@
 #include <string.h>
 #include "signaling.h"
 
-char *signal_getline(char **string)
-{
-    char *line = (char *)calloc(1, 128*sizeof(char));
-    int str_iter;
-    if((*string)[0] == 0)
-        return NULL;
-    for (str_iter = 0; ; str_iter++)
-    {
-        if((*string)[str_iter] != '\n')
-            line[str_iter] = (*string)[str_iter];
-        else
-        {    
-            *string+=(str_iter+1); 
-            break;
-        }
-    }
-    return line;
-}
+
 
 struct conn_info_t* signal_initial(const char *address, 
                                     int port, 

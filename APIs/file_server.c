@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <rtcdc.h>
 #include <string.h>
+#include <uv.h>
 
 #include <sys/types.h>
 #include <dirent.h>
@@ -21,6 +22,7 @@ typedef struct rtcdc_data_channel rtcdc_data_channel;
 
 struct conn_info_t *signal_conn;
 static volatile int fileserver_exit;
+static uv_loop_t *main_loop;
 
 char *gen_md5(char *filename)
 {
@@ -80,14 +82,6 @@ void on_connect(){
 }
 
 
-void parse_candidates(rtcdc_peer_connection *peer, char *candidates)
-{
-    char *line;
-    while((line = signal_getline(&candidates)) != NULL){    
-        rtcdc_parse_candidate_sdp(peer, line);
-        // printf("%s\n", line);
-    }
-}
 
 
 
@@ -130,7 +124,6 @@ static int callback_fileserver(struct libwebsocket_context *context,
             // TODO when close signaling session, fileserver needs to deregister to signaling server
             fileserver_exit = 1;
             break;
-
         case LWS_CALLBACK_CLIENT_WRITEABLE:
             {
                 int lws_err;
@@ -150,7 +143,6 @@ static int callback_fileserver(struct libwebsocket_context *context,
 #endif
                                 break;
                             }
-
                         case FS_INIT_OK:
                             {
 #ifdef DEBUG_FS
@@ -161,7 +153,6 @@ static int callback_fileserver(struct libwebsocket_context *context,
 #endif
                                 break;
                             }
-
                         case FS_STATUS_OK:
                             {
 #ifdef DEBUG_FS
@@ -169,6 +160,16 @@ static int callback_fileserver(struct libwebsocket_context *context,
                                     fprintf(stderr, "FILE_SERVER: send FS_STATUS_OK fail\n");
                                 else 
                                     fprintf(stderr, "FILE_SERVER: send FS_STATUS_OK\n");
+#endif
+                                break;
+                            }
+                        case FS_UPLOAD_READY:
+                            {
+#ifdef DEBUG_FS
+                                if(lws_err<0)
+                                    fprintf(stderr, "FILE_SERVER: send FS_UPLOAD_READY fail\n");
+                                else 
+                                    fprintf(stderr, "FILE_SERVER: send FS_UPLOAD_READY\n");
 #endif
                                 break;
                             }
@@ -305,7 +306,7 @@ static int callback_fileserver(struct libwebsocket_context *context,
                     case SY_UPLOAD:
                         {
 #ifdef DEBUG_FS
-                            fprintf(stderr, "FILE_SERVER: receive SY_UPLOAD: %s\n", recvd_data_str);
+                            fprintf(stderr, "FILE_SERVER: receive SY_UPLOAD\n");
 #endif
                             /* get repo_name, and strcat repo_path, get client_SDP and client_candidate */
                             char *client_SDP, *client_candidates, *repo_name, *session_id;
@@ -313,31 +314,53 @@ static int callback_fileserver(struct libwebsocket_context *context,
                                         "client_SDP", &client_SDP,
                                         "client_candidates", &client_candidates,
                                         "repo_name", &repo_name, "session_id", &session_id);
-                            char *repo_path = (char *)calloc(1, 128*sizeof(char));
-                            strcpy(repo_path, WAREHOUSE_PATH);
-                            strcat(repo_path, repo_name);
 
                             /* parse cleint_SDP and client_candidate*/
-                            char *fs_SDP, *fs_candidates;
-                            fs_candidates = (char *)calloc(1, DATASIZE);
+                            char *fs_SDP;
+                            struct sy_rtcdc_info_t rtcdc_info;
                             rtcdc_peer_connection * answerer = rtcdc_create_peer_connection((void *)upload_fs_on_channel,
                                                                                             (void *)on_candidate,
                                                                                             (void *)upload_fs_on_connect,
-                                                                                            STUN_IP, 0, fs_candidates);
-                            printf("client_SDP:%s\nclient_candidates:%s\n", client_SDP, client_candidates);
+                                                                                            STUN_IP, 0, (void *)&rtcdc_info);
                             rtcdc_parse_offer_sdp(answerer, client_SDP);
                             parse_candidates(answerer, client_candidates);
-                            /* gen fs_SDP, fs_candidate */
+                            /* gen fs_SDP, fs_candidates */
                             fs_SDP = rtcdc_generate_offer_sdp(answerer);
                         
+                            /* send the fs_SDP, fs_candidates */
+                            json_t *sent_session_JData = json_object();
+                            json_t *json_arr = json_array();
+                            json_object_set_new(sent_session_JData, "metadata_type", json_integer(FS_UPLOAD_READY));
+                            json_object_set_new(sent_session_JData, "session_id", json_string(session_id));
+                            json_object_set_new(sent_session_JData, "fs_SDP", json_string(fs_SDP));
+                            json_object_set_new(sent_session_JData, "fs_candidates", json_string(rtcdc_info.local_candidates));
 
-                            printf("fs_SDP:%s\nfs_candidates:%s\n", fs_SDP, fs_candidates);
-                            /* send the fs_SDP, fs_candidate */
+                            sent_data_str = json_dumps(sent_session_JData, 0);
+                            
+                            struct writedata_info_t *write_data = *write_data_ptr;
+                            write_data->target_wsi = wsi;
+                            write_data->type = FS_UPLOAD_READY;
+                            strcpy(write_data->data, sent_data_str);
+                            
+                            libwebsocket_callback_on_writable(context, wsi);
 
-                            /* run rtcdc_loop */
+                            /* assign repo_path into rtcdc_info */
+                            char repo_path[PATH_SIZE];
+                            strcpy(repo_path, WAREHOUSE_PATH);
+                            strcat(repo_path, repo_name);
 
-                            /* TODO: when the rtcdc_loop terminate */
 
+#ifdef DEBUG_FS
+                            fprintf(stderr, "FILE_SERVER: FS_UPLOAD_READY: waiting rtcdc connection\n");
+#endif
+
+                            /* allocate a uv to run rtcdc_loop */
+                            uv_work_t work;
+                            work.data = (void *)answerer;
+                            uv_queue_work(main_loop, &work, uv_rtcdc_loop, NULL);
+
+                            /* TODO: when the rtcdc_loop terminate? */
+                            /* TODO: free memory */
                             break;
                         }
                     default:
@@ -364,13 +387,14 @@ static struct libwebsocket_protocols fileserver_protocols[] = {
 
 int main(int argc, char *argv[]){
     // initial signaling
+    main_loop = uv_default_loop();
     const char *address = "localhost";
     int port = 7681;
     signal_conn = signal_initial(address, port, fileserver_protocols, "fileserver-protocol", NULL);
     struct libwebsocket_context *context = signal_conn->context;
     fileserver_exit = 0;
     signal_connect(context, &fileserver_exit);
-
+    uv_run(main_loop, UV_RUN_DEFAULT);
     return 0;
 }
 

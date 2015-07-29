@@ -12,6 +12,7 @@ typedef enum {
     FS_REPO_NOT_EXIST,
     FS_CONNECT_OK,
     FS_STATUS_OK,
+    FS_UPLOAD_READY,
     FS_UPLOAD_OK,
     FS_DOWNLOAD_OK,
     SY_INIT,

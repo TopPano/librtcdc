@@ -728,13 +728,17 @@ static int callback_SDP(struct libwebsocket_context *context,
                         }
                     case SY_UPLOAD:
                         {
-                            fprintf(stderr, "METADATA_SERVER: receive SY_UPLOAD\n%s\n\n", recvd_data_str);
+                            fprintf(stderr, "METADATA_SERVER: receive SY_UPLOAD\n");
                             
                             /* get session info */
                             char *session_id;
                             json_unpack(recvd_session_JData, "{s:s}", "session_id", &session_id);
                             struct session_info_t *session = get_session(session_id);
-                        
+
+                            /* update client_wsi*/
+                            if(update_session(session_id, "client_wsi", (void *)wsi) == 0){
+                                /* TODO: if update failed, what to do? */
+                            }
 
                             /* send SY_UPLOAD, repo_name, client_SDP, client_candidate to fileserver */
                             json_t *sent_session_JData = json_deep_copy(recvd_session_JData);
@@ -749,10 +753,33 @@ static int callback_SDP(struct libwebsocket_context *context,
                            
                             libwebsocket_callback_on_writable(context, wsi);
                             /* free memory */
+                            /* TODO: here maybe segamentation fault*/
                             json_decref(recvd_session_JData);   
                             json_decref(sent_session_JData);
                             free(sent_data_str);
                             break;
+                        }
+                    case FS_UPLOAD_READY:
+                        {
+                            fprintf(stderr, "METADATA_SERVER: receive FS_UPLOAD_READY:%s\n", recvd_data_str);
+                            
+                            /* get session info */
+                            char *session_id;
+                            json_unpack(recvd_session_JData, "{s:s}", "session_id", &session_id);
+                            struct session_info_t *session = get_session(session_id);
+
+                            /* sent the fs_SDP, fs_candidates to client  */
+                            char *sent_data_str = recvd_data_str;
+                            struct writedata_info_t *write_data = *write_data_ptr;
+                            strcpy(write_data->data, sent_data_str);
+                            write_data->target_wsi = session->client_wsi;
+                            write_data->type = FS_UPLOAD_READY;
+                           
+                            libwebsocket_callback_on_writable(context, wsi);
+                            /* free memory */
+                            /* TODO: here maybe segamentation fault*/
+                            json_decref(recvd_session_JData);   
+                            //free(sent_data_str);
                         }
                     default:
                         break;
@@ -841,6 +868,17 @@ static int callback_SDP(struct libwebsocket_context *context,
 #endif
                                 break;
                             }
+                        case(FS_UPLOAD_READY):
+                            {
+#ifdef DEBUG_META
+                                if(lws_err<0)
+                                    fprintf(stderr, "METADATA_SERVER: send SY_UPLOAD_READY to fileserver fail\n");
+                                else
+                                    fprintf(stderr, "METADATA_SERVER: send SY_UPLOAD_READY to fileserver\n");
+#endif
+                                break;
+                            }
+
                        default:
                             break;
                     }
