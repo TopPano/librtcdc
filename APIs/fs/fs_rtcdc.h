@@ -1,7 +1,7 @@
 #include <rtcdc.h>
 #include <uv.h>
 
-#define SDP_SIZE 1024
+#define SDP_SIZE 2048
 #define PATH_SIZE 128
 #define STUN_IP "stun.services.mozilla.com"
 
@@ -19,14 +19,7 @@ void upload_fs_on_channel(struct rtcdc_peer_connection *peer,
                 struct rtcdc_data_channel *dc, 
                 void *user_data);
 
-void upload_client_on_channel(struct rtcdc_peer_connection *peer,
-                struct rtcdc_data_channel *dc, 
-                void *user_data);
-
 void upload_fs_on_connect(struct rtcdc_peer_connection *peer,
-                void *user_data);
-
-void upload_client_on_connect(struct rtcdc_peer_connection *peer,
                 void *user_data);
 
 void uv_rtcdc_loop(uv_work_t *work);

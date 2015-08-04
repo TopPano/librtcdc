@@ -1,13 +1,13 @@
-
 all: metadata_server file_server client
-metadata_server: metadata_server.c signaling.c signaling.h
-	gcc -DDEBUG_META -g -lwebsockets -ljansson -o metadata_server metadata_server.c signaling.h signaling.c `pkg-config --cflags --libs libmongoc-1.0`
 
-file_server: file_server.c signaling.c signaling.h
-	gcc -DDEBUG_FS -g -lrtcdc -l:libuv.so -lwebsockets -ljansson -lcrypto signaling.c signaling.h signaling_rtcdc.c signaling_rtcdc.h file_server.c -o file_server
+metadata_server: ms/metadata_server.c ms/ms_struct.h common.h lwst.h
+	gcc -DDEBUG_META -g -lwebsockets -ljansson -o metadata_server ms/metadata_server.c `pkg-config --cflags --libs libmongoc-1.0`
 
-client: sy.c sy.h signaling.c signaling.h signaling_rtcdc.c signaling_rtcdc.h
-	gcc -DDEBUG_SY -g  -lcrypto -l:libuv.so -lrtcdc -lwebsockets -ljansson signaling.c signaling.h signaling_rtcdc.c signaling_rtcdc.h sy.h sy.c -o client
+file_server: fs/file_server.c lwst.c lwst.h fs/fs_rtcdc.c fs/fs_rtcdc.h common.h
+	gcc -DDEBUG_FS -DDEBUG_RTCDC -g -lrtcdc -luv -lwebsockets -ljansson -lcrypto lwst.c lwst.h fs/fs_rtcdc.c fs/fs_rtcdc.h fs/file_server.c -o file_server
+
+client: cli/sy.c cli/sy.h lwst.c lwst.h cli/cli_rtcdc.c cli/cli_rtcdc.h common.h
+	gcc -DDEBUG_SY -DDEBUG_RTCDC -g  -lcrypto -l:libuv.so.1 -lrtcdc -lwebsockets -ljansson lwst.c lwst.h cli/cli_rtcdc.c cli/cli_rtcdc.h cli/sy.h cli/sy.c -o client
 
 
 clean:

@@ -4,12 +4,7 @@
 #include <rtcdc.h>
 #define NAMESIZE 32
 
-/* for signal_server
-struct sy_conn_info_t{
-    char repo_name[NAMESIZE];
-    struct rtcdc_peer_connection *peer;
-};
-*/
+/* only in cli */
 struct sy_session_t{
     char *session_id;
     char *URI_code;
@@ -18,6 +13,7 @@ struct sy_session_t{
     char *local_repo_path;
     char repo_name[NAMESIZE];
 };
+
 
 struct sy_diff_t{
     uint8_t num;

@@ -11,8 +11,10 @@
 #include <errno.h>
 #include <jansson.h>
 #include <sys/stat.h>
-#include "signaling.h"
-#include "signaling_rtcdc.h"
+#include "../lwst.h"
+#include "fs_rtcdc.h"
+
+
 #define WAREHOUSE_PATH "/home/uniray/warehouse/"
 #define LINE_SIZE 32
 
@@ -20,9 +22,9 @@
 typedef struct rtcdc_peer_connection rtcdc_peer_connection;
 typedef struct rtcdc_data_channel rtcdc_data_channel;
 
-struct conn_info_t *signal_conn;
+struct lwst_conn_t *signal_conn;
 static volatile int fileserver_exit;
-static uv_loop_t *main_loop;
+//static uv_loop_t *main_loop;
 
 char *gen_md5(char *filename)
 {
@@ -48,9 +50,8 @@ char *gen_md5(char *filename)
         fclose(pFile);
     }
     MD5_Final(hash, &ctx);
-
-    char *result = (char *)calloc(1, MD5_DIGEST_LENGTH*2);
-    memset(result, 0, MD5_DIGEST_LENGTH*2);
+    char *result = (char *)calloc(1, (MD5_DIGEST_LENGTH*2+1));
+    memset(result, 0, (MD5_DIGEST_LENGTH*2+1));
     int i;
     char tmp[4];
     for(i=0;i<MD5_DIGEST_LENGTH; i++)
@@ -62,41 +63,19 @@ char *gen_md5(char *filename)
     return result;
 }
 
-void on_message(rtcdc_data_channel* dc, int datatype, void* data, size_t len, void* user_data){
-}
-
-void on_close_channel(){
-    fprintf(stderr, "close channel!\n");
-}
-
-
-void on_channel(rtcdc_peer_connection *peer, rtcdc_data_channel* dc, void* user_data){
-    dc->on_message = on_message;
-    fprintf(stderr, "on channel!!\n");
-}
-
-
-
-void on_connect(){
-    fprintf(stderr, "on connect!\n");
-}
-
-
-
-
 
 static int callback_fileserver(struct libwebsocket_context *context,
         struct libwebsocket *wsi,
         enum libwebsocket_callback_reasons reason, void *user,
         void *in, size_t len)
 {
-    struct writedata_info_t **write_data_ptr = (struct writedata_info_t **)user;
+    struct lwst_writedata_t **write_data_ptr = (struct lwst_writedata_t **)user;
     switch (reason) {
         case LWS_CALLBACK_CLIENT_ESTABLISHED:
             {
                 fprintf(stderr, "FILE_SERVER: LWS_CALLBACK_CLIENT_ESTABLISHED\n");
                 /* initial write data */
-                struct writedata_info_t *write_data = (struct writedata_info_t *)calloc(1, sizeof(struct writedata_info_t));
+                struct lwst_writedata_t *write_data = (struct lwst_writedata_t *)calloc(1, sizeof(struct lwst_writedata_t));
                 *write_data_ptr = write_data;
 
                 /* register to metadata server */
@@ -110,7 +89,7 @@ static int callback_fileserver(struct libwebsocket_context *context,
                 strcpy(write_data->data, sent_data_str);
                 
                 free(sent_data_str);
-                json_decref(sent_session_JData);
+                free(sent_session_JData);
 
                 libwebsocket_callback_on_writable(context, wsi);
                 break;
@@ -118,7 +97,6 @@ static int callback_fileserver(struct libwebsocket_context *context,
         case LWS_CALLBACK_CLIENT_CONNECTION_ERROR:
             fprintf(stderr, "FILE_SERVER: LWS_CALLBACK_CLIENT_CONNECTION_ERROR\n");
             break;
-
         case LWS_CALLBACK_CLOSED:
             fprintf(stderr, "FILE_SERVER: LWS_CALLBACK_CLOSED\n");
             // TODO when close signaling session, fileserver needs to deregister to signaling server
@@ -128,9 +106,10 @@ static int callback_fileserver(struct libwebsocket_context *context,
             {
                 int lws_err;
                 size_t data_len;
-                struct writedata_info_t *write_data = *write_data_ptr;
+                struct lwst_writedata_t *write_data = *write_data_ptr;
                 if((data_len = strlen(write_data->data))>0)
                 {
+                    
                     lws_err = libwebsocket_write(write_data->target_wsi, (void *) write_data->data, strlen(write_data->data), LWS_WRITE_TEXT);
                     switch(write_data->type){
                         case FS_REGISTER_t:
@@ -173,7 +152,6 @@ static int callback_fileserver(struct libwebsocket_context *context,
 #endif
                                 break;
                             }
-
                         default:
                             break;
                     }                
@@ -226,7 +204,7 @@ static int callback_fileserver(struct libwebsocket_context *context,
                             json_object_set_new(sent_session_JData, "session_id", json_string(session_id)); 
                             sent_data_str = json_dumps(sent_session_JData, 0);
                             
-                            struct writedata_info_t *write_data = *write_data_ptr;
+                            struct lwst_writedata_t *write_data = *write_data_ptr;
                             write_data->target_wsi = wsi;
                             write_data->type = type;
                             strcpy(write_data->data, sent_data_str);
@@ -237,7 +215,7 @@ static int callback_fileserver(struct libwebsocket_context *context,
                             free(repo_name);
                             free(session_id);
                             free(sent_data_str);
-                            json_decref(sent_session_JData);
+                            free(sent_session_JData);
                             free(recvd_session_JData);
                             break;
                         }
@@ -282,7 +260,8 @@ static int callback_fileserver(struct libwebsocket_context *context,
                                         json_object_set_new(file_json, "filename", json_string(ep->d_name));
                                         json_object_set_new(file_json, "fs_checksum", json_string(file_md5));
                                         json_array_append(json_arr, file_json);
-                                        json_decref(file_json);
+                                        /* TODO file_josn needs to be free? */
+                                        //json_decref(file_json);
                                         free(file_md5);
                                     }
                                 }
@@ -294,7 +273,7 @@ static int callback_fileserver(struct libwebsocket_context *context,
                             /* send the FS_STATUS, json object and session_id back to the metadata server */
                             sent_data_str = json_dumps(sent_session_JData, 0);
                             
-                            struct writedata_info_t *write_data = *write_data_ptr;
+                            struct lwst_writedata_t *write_data = *write_data_ptr;
                             write_data->target_wsi = wsi;
                             write_data->type = FS_STATUS_OK;
                             strcpy(write_data->data, sent_data_str);
@@ -310,21 +289,23 @@ static int callback_fileserver(struct libwebsocket_context *context,
 #endif
                             /* get repo_name, and strcat repo_path, get client_SDP and client_candidate */
                             char *client_SDP, *client_candidates, *repo_name, *session_id;
+                            
                             json_unpack(recvd_session_JData, "{s:s, s:s, s:s, s:s}", 
                                         "client_SDP", &client_SDP,
                                         "client_candidates", &client_candidates,
                                         "repo_name", &repo_name, "session_id", &session_id);
 
-                            /* parse cleint_SDP and client_candidate*/
+                            /* parse client_SDP and client_candidate*/
                             char *fs_SDP;
                             struct sy_rtcdc_info_t rtcdc_info;
+                            memset(&rtcdc_info, 0, sizeof(struct sy_rtcdc_info_t));
                             rtcdc_peer_connection * answerer = rtcdc_create_peer_connection((void *)upload_fs_on_channel,
                                                                                             (void *)on_candidate,
                                                                                             (void *)upload_fs_on_connect,
                                                                                             STUN_IP, 0, (void *)&rtcdc_info);
+                            client_SDP = (char *)json_string_value(json_object_get(recvd_session_JData, "client_SDP"));
                             rtcdc_parse_offer_sdp(answerer, client_SDP);
                             parse_candidates(answerer, client_candidates);
-                            /* gen fs_SDP, fs_candidates */
                             fs_SDP = rtcdc_generate_offer_sdp(answerer);
                         
                             /* send the fs_SDP, fs_candidates */
@@ -334,33 +315,30 @@ static int callback_fileserver(struct libwebsocket_context *context,
                             json_object_set_new(sent_session_JData, "session_id", json_string(session_id));
                             json_object_set_new(sent_session_JData, "fs_SDP", json_string(fs_SDP));
                             json_object_set_new(sent_session_JData, "fs_candidates", json_string(rtcdc_info.local_candidates));
-
+                            
                             sent_data_str = json_dumps(sent_session_JData, 0);
                             
-                            struct writedata_info_t *write_data = *write_data_ptr;
+                            struct lwst_writedata_t *write_data = *write_data_ptr;
                             write_data->target_wsi = wsi;
                             write_data->type = FS_UPLOAD_READY;
                             strcpy(write_data->data, sent_data_str);
-                            
                             libwebsocket_callback_on_writable(context, wsi);
 
                             /* assign repo_path into rtcdc_info */
                             char repo_path[PATH_SIZE];
                             strcpy(repo_path, WAREHOUSE_PATH);
                             strcat(repo_path, repo_name);
-
-
-#ifdef DEBUG_FS
+#ifdef DEBUG_FS2
                             fprintf(stderr, "FILE_SERVER: FS_UPLOAD_READY: waiting rtcdc connection\n");
 #endif
                             /* allocate a uv to run rtcdc_loop */
+                            uv_loop_t *main_loop = uv_default_loop();
                             uv_work_t work;
                             work.data = (void *)answerer;
                             uv_queue_work(main_loop, &work, uv_rtcdc_loop, NULL);
-
                             /* TODO: when the rtcdc_loop terminate? */
                             /* TODO: free memory */
-                            break;
+                                break;
                         }
                     default:
                         break;
@@ -377,8 +355,7 @@ static struct libwebsocket_protocols fileserver_protocols[] = {
     {
         "fileserver-protocol",
         callback_fileserver,
-        1024,
-        10,
+        2048,
     },
     { NULL, NULL, 0, 0 }
 };
@@ -386,14 +363,13 @@ static struct libwebsocket_protocols fileserver_protocols[] = {
 
 int main(int argc, char *argv[]){
     // initial signaling
-    main_loop = uv_default_loop();
     const char *address = "localhost";
     int port = 7681;
-    signal_conn = signal_initial(address, port, fileserver_protocols, "fileserver-protocol", NULL);
+    signal_conn = lwst_initial(address, port, fileserver_protocols, "fileserver-protocol", NULL);
     struct libwebsocket_context *context = signal_conn->context;
     fileserver_exit = 0;
-    signal_connect(context, &fileserver_exit);
-    uv_run(main_loop, UV_RUN_DEFAULT);
+    lwst_connect(context, &fileserver_exit);
+    //uv_run(main_loop, UV_RUN_DEFAULT);
     return 0;
 }
 

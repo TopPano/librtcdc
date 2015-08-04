@@ -10,8 +10,8 @@
 #include <openssl/md5.h>
 
 #include <rtcdc.h>
-#include "signaling.h"
-#include "signaling_rtcdc.h"
+#include "../lwst.h"
+#include "cli_rtcdc.h"
 #include "sy.h"
 
 #define LINE_SIZE 32
@@ -51,8 +51,8 @@ char *gen_md5(char *filename)
     }
     MD5_Final(hash, &ctx);
 
-    char *result = (char *)calloc(1, MD5_DIGEST_LENGTH*2);
-    memset(result, 0, MD5_DIGEST_LENGTH*2);
+    char *result = (char *)calloc(1, MD5_DIGEST_LENGTH*2+1);
+    memset(result, 0, MD5_DIGEST_LENGTH*2+1);
     int i;
     char tmp[4];
     for(i=0;i<MD5_DIGEST_LENGTH; i++)
@@ -154,8 +154,7 @@ static struct libwebsocket_protocols client_protocols[] = {
     {
         "client-protocol",
         callback_client,
-        1024, /* TODO: the size may be a trouble */
-        10,
+        2048, /* TODO: the size may be a trouble */
     },
     { NULL, NULL, 0, 0 }
 };
@@ -178,18 +177,18 @@ uint8_t sy_init(struct sy_session_t *sy_session, char *repo_name, char *local_re
     uint16_t metadata_server_port = 7681;
     uint8_t metadata_type;
     char *session_id, *URI_code;
-    struct conn_info_t *metadata_conn;
-    metadata_conn = signal_initial(metadata_server_IP, metadata_server_port, client_protocols, "client-protocol", NULL);
+    struct lwst_conn_t *metadata_conn;
+    metadata_conn = lwst_initial(metadata_server_IP, metadata_server_port, client_protocols, "client-protocol", NULL);
     struct libwebsocket_context *context = metadata_conn->context;
     struct libwebsocket *wsi = metadata_conn->wsi;
     volatile uint8_t client_exit = 0;
     metadata_conn->exit = &client_exit;
 
-    /* allocate a uv to run signal_connect() */
+    /* allocate a uv to run lwst_uv_connect() */
     main_loop = uv_default_loop();
     uv_work_t work;
     work.data = (void *)metadata_conn;
-    uv_queue_work(main_loop, &work, uv_signal_connect, NULL);
+    uv_queue_work(main_loop, &work, lwst_uv_connect, NULL);
     sent_lws_JData = json_object();
     json_object_set_new(sent_lws_JData, "metadata_type", json_integer(SY_INIT));
     json_object_set_new(sent_lws_JData, "repo_name", json_string(repo_name));
@@ -255,19 +254,19 @@ uint8_t sy_connect(struct sy_session_t *sy_session, char *URI_code, char *local_
     uint16_t metadata_server_port = 7681;
     uint8_t metadata_type;
     char *session_id;
-    struct conn_info_t *metadata_conn;
+    struct lwst_conn_t *metadata_conn;
 
-    metadata_conn = signal_initial(metadata_server_IP, metadata_server_port, client_protocols, "client-protocol", NULL);
+    metadata_conn = lwst_initial(metadata_server_IP, metadata_server_port, client_protocols, "client-protocol", NULL);
 
     struct libwebsocket_context *context = metadata_conn->context;
     struct libwebsocket *wsi = metadata_conn->wsi;
     volatile uint8_t client_exit = 0;
     metadata_conn->exit = &client_exit;
-    /* allocate a uv to run signal_connect() */
+    /* allocate a uv to run lwst_uv_connect() */
     main_loop = uv_default_loop();
     uv_work_t work;
     work.data = (void *)metadata_conn;
-    uv_queue_work(main_loop, &work, uv_signal_connect, NULL);
+    uv_queue_work(main_loop, &work, lwst_uv_connect, NULL);
     sent_lws_JData = json_object();
     json_object_set_new(sent_lws_JData, "metadata_type", json_integer(SY_CONNECT));
     json_object_set_new(sent_lws_JData, "URI_code", json_string(URI_code));
@@ -331,18 +330,18 @@ uint8_t sy_status(struct sy_session_t *sy_session, struct sy_diff_t *sy_session_
     uint16_t metadata_server_port = 7681;
     uint8_t metadata_type;
     char *session_id, *URI_code;
-    struct conn_info_t *metadata_conn;
-    metadata_conn = signal_initial(metadata_server_IP, metadata_server_port, client_protocols, "client-protocol", NULL);
+    struct lwst_conn_t *metadata_conn;
+    metadata_conn = lwst_initial(metadata_server_IP, metadata_server_port, client_protocols, "client-protocol", NULL);
     struct libwebsocket_context *context = metadata_conn->context;
     struct libwebsocket *wsi = metadata_conn->wsi;
     volatile uint8_t client_exit = 0;
     metadata_conn->exit = &client_exit;
 
-    /* allocate a uv to run signal_connect() */
+    /* allocate a uv to run lwst_uv_connect() */
     main_loop = uv_default_loop();
     uv_work_t work;
     work.data = (void *)metadata_conn;
-    uv_queue_work(main_loop, &work, uv_signal_connect, NULL);
+    uv_queue_work(main_loop, &work, lwst_uv_connect, NULL);
     sent_lws_JData = json_object();
     json_t *sent_file_array_json = json_array();
     json_object_set_new(sent_lws_JData, "metadata_type", json_integer(SY_STATUS));
@@ -422,9 +421,9 @@ uint8_t sy_status(struct sy_session_t *sy_session, struct sy_diff_t *sy_session_
     uv_run(main_loop, UV_RUN_DEFAULT);
     /* free memory */
     usleep(1000);
-    json_decref(sent_file_array_json);
-    json_decref(recvd_file_array_json);
-    json_decref(sy_status_json);
+    free(sent_file_array_json);
+    free(recvd_file_array_json);
+    free(sy_status_json);
 
     free(metadata_conn);
     free(sent_lws_JData);
@@ -439,27 +438,29 @@ uint8_t sy_upload(struct sy_session_t *sy_session, struct sy_diff_t *sy_session_
     uint16_t metadata_server_port = 7681;
     uint8_t metadata_type;
     char *session_id, *URI_code;
-    struct conn_info_t *metadata_conn;
-    metadata_conn = signal_initial(metadata_server_IP, metadata_server_port, client_protocols, "client-protocol", NULL);
+    struct lwst_conn_t *metadata_conn;
+    metadata_conn = lwst_initial(metadata_server_IP, metadata_server_port, client_protocols, "client-protocol", NULL);
     struct libwebsocket_context *context = metadata_conn->context;
     struct libwebsocket *wsi = metadata_conn->wsi;
     volatile uint8_t client_exit = 0;
     metadata_conn->exit = &client_exit;
 
-    /* allocate a uv to run signal_connect() */
+    /* allocate a uv to run lwst_uv_connect() */
     main_loop = uv_default_loop();
     uv_work_t work;
     work.data = (void *)metadata_conn;
-    uv_queue_work(main_loop, &work, uv_signal_connect, NULL);
+    uv_queue_work(main_loop, &work, lwst_uv_connect, NULL);
 
     /* gen rtcdc SDP and candidates */
     char *client_SDP;
     struct sy_rtcdc_info_t rtcdc_info;
+    memset(&rtcdc_info, 0, sizeof(struct sy_rtcdc_info_t));
+    
     struct rtcdc_peer_connection *offerer = rtcdc_create_peer_connection((void *)upload_client_on_channel, (void *)on_candidate, 
                                                                         (void *)upload_client_on_connect,STUN_IP, 0, 
                                                                         (void *)&rtcdc_info);
+    strncpy(rtcdc_info.local_repo_path, LOCAL_REPO_PATH, strlen(LOCAL_REPO_PATH));
     client_SDP = rtcdc_generate_offer_sdp(offerer);
-    
     /* send request: upload files which the fileserver doesnt have */
     /* write SY_UPLOAD, SDP, candidate and session_id */
     sent_lws_JData = json_object();
@@ -494,8 +495,7 @@ uint8_t sy_upload(struct sy_session_t *sy_session, struct sy_diff_t *sy_session_
 
     rtcdc_parse_offer_sdp(offerer, fs_SDP);
     parse_candidates(offerer, fs_candidates);
-    /* rtcdc connection*/
-    
+    /* rtcdc connection */
     rtcdc_loop(offerer);
     /* TODO: when the rtcdc_loop terminate? */
     uv_run(main_loop, UV_RUN_DEFAULT);
@@ -531,7 +531,6 @@ int main(int argc, char *argv[]){
     printf("\n");
     //   free(sy_session);
 
-    //        fgetc(stdin);
 
     /*
        char *URI_code = (char *)calloc(1, strlen(sy_session->URI_code));
@@ -544,17 +543,17 @@ int main(int argc, char *argv[]){
        else
        fprintf(stderr, "sy_connect failed");
        */
+
     struct sy_diff_t *sy_session_diff = sy_default_diff();
     sy_status(sy_session, sy_session_diff);
-/*
+
     int i;
     for(i=0;i<sy_session_diff->num;i++)
     {
         printf("filename:%s, dirty:%d\n", (sy_session_diff->files_diff[i]).filename, (sy_session_diff->files_diff[i]).dirty);
     }
-*/
+
     printf("\n");
-    
     sy_upload(sy_session, sy_session_diff);
     return 0;
 }

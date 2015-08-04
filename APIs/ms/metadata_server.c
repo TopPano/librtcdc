@@ -6,7 +6,8 @@
 #include <jansson.h>
 #include <bson.h>
 #include <mongoc.h>
-#include "signaling.h"
+#include "ms_struct.h"
+#include "../lwst.h"
 
 static struct libwebsocket_context *context;
 static volatile int force_exit = 0;
@@ -24,10 +25,10 @@ void delete_fileserver(struct libwebsocket *fileserver_wsi)
     intptr_t wsi_ptr = (intptr_t)fileserver_wsi;
     BSON_APPEND_INT32 (doc, "wsi", wsi_ptr);
 
-    if (!mongoc_collection_remove (fileserver_coll, MONGOC_DELETE_SINGLE_REMOVE, doc, NULL, &error)) 
-    {
+    if (!mongoc_collection_remove (fileserver_coll, MONGOC_DELETE_SINGLE_REMOVE, doc, NULL, &error)){
         printf ("%s\n", error.message);
     }
+    bson_destroy(doc);
 }
 
 
@@ -49,6 +50,7 @@ uint8_t insert_fileserver(char *fileserver_name, struct libwebsocket *fileserver
 #endif
         return 0;
     }
+    bson_destroy(doc);
     return 1;
 }
 
@@ -93,7 +95,6 @@ char *insert_session(struct libwebsocket *fileserver_wsi, struct libwebsocket *c
     }
     bson_destroy(&insert_bson);
     bson_destroy(&file_array_bson);
-
     return session_id;
 }
 
@@ -117,7 +118,7 @@ uint8_t insert_filesys(struct URI_info_t *repo_URI)
     return 1;
 }
 
-
+/* TODO: this function needs to refactor*/
 uint8_t update_session(char *session_id, char *field, void *value)
 {
     bson_t *update = NULL;
@@ -202,8 +203,12 @@ uint8_t update_session(char *session_id, char *field, void *value)
 #if DEBUG_META
         fprintf (stderr, "METADATA_SERVER: update_session(): %s\n", error.message);
 #endif
+        bson_destroy(update);
+        bson_destroy(query);
         return 0;
     }
+    bson_destroy(update);
+    bson_destroy(query);
     return 1;
 }
 
@@ -249,37 +254,13 @@ struct session_info_t *get_session(char *session_id)
         strcpy(session->repo_name, json_string_value(repo_name_json));
         strcpy(session->files, json_dumps(files_json, 0));
 
-        json_decref(files_json);
-        json_decref(repo_name_json);
-        json_decref(client_wsi_json);
-        json_decref(fileserver_wsi_json);
+        free(files_json);
+        free(repo_name_json);
+        free(client_wsi_json);
+        free(fileserver_wsi_json);
 
         bson_free(find_context_str);
 
-        /*        
-                  bson_t *doc;
-        //libbon is hard to use, I(uniray7) use jansson instead
-        session = (struct session_info_t *)calloc(1, sizeof(struct session_info_t));
-        bson_iter_t iter, value;
-        bson_iter_init(&iter, find_context);
-        bson_iter_find_descendant(&iter, "fileserver_wsi", &value);
-        BSON_ITER_HOLDS_INT32(&value);
-        intptr_t fileserver_wsi_ptr = (intptr_t) bson_iter_int32(&value);
-        session->fileserver_wsi = (struct libwebsocket *)fileserver_wsi_ptr;
-
-        bson_iter_init(&iter, find_context);
-        bson_iter_find_descendant(&iter, "client_wsi", &value);
-        BSON_ITER_HOLDS_INT32(&value);
-        intptr_t client_wsi_ptr = (intptr_t) bson_iter_int32(&value);
-        session->client_wsi = (struct libwebsocket *)client_wsi_ptr;
-
-        bson_iter_init(&iter, find_context);
-        bson_iter_find_descendant(&iter, "repo_name", &value);
-        BSON_ITER_HOLDS_UTF8(&value);
-        uint32_t length;
-        strcpy(session->repo_name, (char *)bson_iter_utf8(&value, &length));
-
-*/
         strcpy(session->session_id, session_id);
     }
     return session;
@@ -346,6 +327,10 @@ struct libwebsocket* get_wsi(char *fileserver_name)
         BSON_ITER_HOLDS_INT32(&value);
         intptr_t wsi_ptr = (intptr_t) bson_iter_int32(&value);
         struct libwebsocket *wsi = (struct libwebsocket *)wsi_ptr;
+        mongoc_cursor_destroy(cursor);
+        /*TODO: I am not sure it is correct?*/
+        bson_destroy(find_query);
+        bson_destroy(proj);
         return wsi;
     }
 }
@@ -414,14 +399,14 @@ static int callback_SDP(struct libwebsocket_context *context,
         enum libwebsocket_callback_reasons reason, void *user,
         void *in, size_t len)
 {
-    struct writedata_info_t **write_data_ptr = (struct writedata_info_t **)user;
+    struct lwst_writedata_t **write_data_ptr = (struct lwst_writedata_t **)user;
     switch (reason) {
         case LWS_CALLBACK_ESTABLISHED:
             {
                 fprintf(stderr, "==================================================================\n");
                 fprintf(stderr, "METADATA_SERVER: LWS_CALLBACK_ESTABLISHED\n");
                 /* initial write data */
-                struct writedata_info_t *write_data = (struct writedata_info_t *)calloc(1, sizeof(struct writedata_info_t));
+                struct lwst_writedata_t *write_data = (struct lwst_writedata_t *)calloc(1, sizeof(struct lwst_writedata_t));
                 *write_data_ptr = write_data;
                 break;
             }
@@ -431,6 +416,9 @@ static int callback_SDP(struct libwebsocket_context *context,
         case LWS_CALLBACK_CLOSED:
             fprintf(stderr, "METADATA_SERVER: LWS_CALLBACK_CLOSED\n");
             // deregister the fileserver name and fileserver wsi in mongoDB
+            /* free write data */
+            struct lwst_writedata_t *write_data = *write_data_ptr;
+            free(write_data);
             /* TODO: delete_fileserver happenrd when fileserver closed, how about the client closed? */
             delete_fileserver(wsi);
             break;
@@ -439,8 +427,8 @@ static int callback_SDP(struct libwebsocket_context *context,
                 int metadata_type ,lws_err;
                 char *recvd_data_str = (char *)in;
                 json_t *recvd_session_JData = NULL;
-                json_error_t *err = NULL;
-                recvd_session_JData = json_loads((const char *)recvd_data_str, JSON_DECODE_ANY, err);
+                json_error_t json_err;
+                recvd_session_JData = json_loads((const char *)recvd_data_str, JSON_DECODE_ANY, &json_err);
                 json_unpack(recvd_session_JData, "{s:i}", "metadata_type", &metadata_type);
                 switch (metadata_type){
                     case FS_REGISTER_t:
@@ -457,16 +445,17 @@ static int callback_SDP(struct libwebsocket_context *context,
                             json_object_set_new(sent_session_JData, "fileserver_dns", json_string("toppano://server1.tw"));
                             char *sent_data_str = json_dumps(sent_session_JData, 0);
 
-                            struct writedata_info_t *write_data = *write_data_ptr;
+                            struct lwst_writedata_t *write_data = *write_data_ptr;
                             write_data->target_wsi = wsi;
                             write_data->type = FS_REGISTER_OK_t;
                             strcpy(write_data->data, sent_data_str);
 
                             libwebsocket_callback_on_writable(context, wsi);
 
-                            json_decref(recvd_session_JData);   
+                            json_decref(recvd_session_JData);  
                             json_decref(sent_session_JData);
                             free(sent_data_str);
+                            
                             break;
                         }
                     case SY_INIT:
@@ -494,7 +483,7 @@ static int callback_SDP(struct libwebsocket_context *context,
                             json_object_set_new(sent_session_JData, "session_id", json_string(session_id));
                             char *sent_data_str = json_dumps(sent_session_JData, 0);
 
-                            struct writedata_info_t *write_data = *write_data_ptr;
+                            struct lwst_writedata_t *write_data = *write_data_ptr;
                             write_data->target_wsi = fileserver_wsi;
                             write_data->type = SY_INIT;
                             strcpy(write_data->data, sent_data_str);
@@ -505,6 +494,7 @@ static int callback_SDP(struct libwebsocket_context *context,
                             json_decref(recvd_session_JData);   
                             json_decref(sent_session_JData);
                             free(sent_data_str);
+                            free(session_id);
                             /*TODO: uniray7: I dont know why i cannot free repo_name which is used by json_unpack()
                              * if free, metadata server will segmentation fault
                              * */ 
@@ -517,11 +507,10 @@ static int callback_SDP(struct libwebsocket_context *context,
                             char *session_id = NULL; 
                             json_unpack(recvd_session_JData, "{s:s}", "session_id", &session_id);
                             /* Gen a URI_code and insert into Filesys tree (URI_code, repo_name, fileserver_wsi) */
-                            char URI_code[NAMESIZE];
+                            char URI_code[ID_SIZE];
                             bson_oid_t oid;
                             bson_oid_init (&oid, NULL);
                             bson_oid_to_string(&oid, URI_code);
-
                             /* lookup fileserver_wsi and repo_name */
                             struct session_info_t *session = get_session(session_id);
                             struct URI_info_t *repo_URI = (struct URI_info_t *)calloc(1, sizeof(struct URI_info_t));
@@ -537,7 +526,6 @@ static int callback_SDP(struct libwebsocket_context *context,
                             if(update_session(session_id, "state", (void*)&state) == 0){
                                 /* TODO: if update failed, what to do? */
                             }
-
                             /* send SY_INIT_OK, URI_code, session_id to client according to client_wsi in session table */
                             json_t *sent_session_JData = json_object();
                             json_object_set_new(sent_session_JData, "metadata_type", json_integer(SY_INIT_OK));
@@ -545,7 +533,7 @@ static int callback_SDP(struct libwebsocket_context *context,
                             json_object_set_new(sent_session_JData, "session_id", json_string(session_id));
                             char *sent_data_str = json_dumps(sent_session_JData, 0);
 
-                            struct writedata_info_t *write_data = *write_data_ptr;
+                            struct lwst_writedata_t *write_data = *write_data_ptr;
                             write_data->target_wsi = session->client_wsi;
                             write_data->type = SY_INIT_OK;
                             strcpy(write_data->data, sent_data_str);
@@ -556,10 +544,11 @@ static int callback_SDP(struct libwebsocket_context *context,
                             json_decref(sent_session_JData);
                             free(sent_data_str);
                             free(session);
-                            //free(session_id);
+                            free(repo_URI);
                             /*TODO: uniray7: I dont know why i cannot free session which is used by json_unpack()
                              * if free, metadata server will segmentation fault
                              * */ 
+                            
                             break;
                         }
                     case SY_CONNECT:
@@ -596,7 +585,7 @@ static int callback_SDP(struct libwebsocket_context *context,
                             json_object_set_new(sent_session_JData, "session_id", json_string(session_id));
                             char *sent_data_str = json_dumps(sent_session_JData, 0);
 
-                            struct writedata_info_t *write_data = *write_data_ptr;
+                            struct lwst_writedata_t *write_data = *write_data_ptr;
                             write_data->target_wsi = client_wsi;
                             write_data->type = SY_CONNECT_OK;
                             strcpy(write_data->data, sent_data_str);
@@ -642,7 +631,7 @@ static int callback_SDP(struct libwebsocket_context *context,
                             json_object_set_new(sent_session_JData, "repo_name", json_string(session->repo_name));
                             char *sent_data_str = json_dumps(sent_session_JData, 0);
                             
-                            struct writedata_info_t *write_data = *write_data_ptr;
+                            struct lwst_writedata_t *write_data = *write_data_ptr;
                             strcpy(write_data->data, sent_data_str);
                             write_data->target_wsi = session->fileserver_wsi;
                             write_data->type = SY_STATUS;
@@ -667,7 +656,7 @@ static int callback_SDP(struct libwebsocket_context *context,
                             json_t *fs_checksum_array_json = json_object_get(recvd_session_JData, "files");
 
                             /* get the client checksum from the session*/
-                            json_t *client_checksum_array_json = json_loads((const char *)session->files, JSON_DECODE_ANY, err);
+                            json_t *client_checksum_array_json = json_loads((const char *)session->files, JSON_DECODE_ANY, &json_err);
 
                             /* composite client_checksum_json and fs_checksum_json into files_checksum_json */
                             json_t * file_array_json = join_checksum_arrays("filename", fs_checksum_array_json, "fs_checksum", client_checksum_array_json, "client_checksum");
@@ -713,7 +702,7 @@ static int callback_SDP(struct libwebsocket_context *context,
                             json_object_set_new(sent_session_JData, "files", sent_array);
                             char *sent_data_str = json_dumps(sent_session_JData, 0);
                             
-                            struct writedata_info_t *write_data = *write_data_ptr;
+                            struct lwst_writedata_t *write_data = *write_data_ptr;
                             strcpy(write_data->data, sent_data_str);
                             write_data->target_wsi = session->client_wsi;
                             write_data->type = SY_STATUS_OK;
@@ -723,6 +712,7 @@ static int callback_SDP(struct libwebsocket_context *context,
                             /* free memory */
                             json_decref(recvd_session_JData);   
                             json_decref(sent_session_JData);
+                            json_decref(file_array_json);
                             free(sent_data_str);
                             break;
                         }
@@ -731,55 +721,65 @@ static int callback_SDP(struct libwebsocket_context *context,
                             fprintf(stderr, "METADATA_SERVER: receive SY_UPLOAD\n");
                             
                             /* get session info */
-                            char *session_id;
-                            json_unpack(recvd_session_JData, "{s:s}", "session_id", &session_id);
-                            struct session_info_t *session = get_session(session_id);
+                            char *session_id, *client_SDP, *client_candidates;
+                            json_unpack(recvd_session_JData, "{s:s, s:s, s:s}", 
+                                        "session_id", &session_id,
+                                        "client_SDP", &client_SDP,
+                                        "client_candidates", &client_candidates);
 
+                            struct session_info_t *session = get_session(session_id);
                             /* update client_wsi*/
                             if(update_session(session_id, "client_wsi", (void *)wsi) == 0){
                                 /* TODO: if update failed, what to do? */
                             }
 
                             /* send SY_UPLOAD, repo_name, client_SDP, client_candidate to fileserver */
-                            json_t *sent_session_JData = json_deep_copy(recvd_session_JData);
+                            json_t *sent_session_JData = json_object(); 
                             json_object_set_new(sent_session_JData, "metadata_type", json_integer(SY_UPLOAD));
+                            json_object_set_new(sent_session_JData, "session_id", json_string(session_id));
                             json_object_set_new(sent_session_JData, "repo_name", json_string(session->repo_name));
-                            char *sent_data_str = json_dumps(sent_session_JData, 0);
+                            json_object_set_new(sent_session_JData, "client_SDP", json_string(client_SDP));
+                            json_object_set_new(sent_session_JData, "client_candidates", json_string(client_candidates));
 
-                            struct writedata_info_t *write_data = *write_data_ptr;
+                            char *sent_data_str = json_dumps(sent_session_JData, 0);
+                            struct lwst_writedata_t *write_data = *write_data_ptr;
                             strcpy(write_data->data, sent_data_str);
                             write_data->target_wsi = session->fileserver_wsi;
                             write_data->type = SY_UPLOAD;
                            
                             libwebsocket_callback_on_writable(context, wsi);
                             /* free memory */
-                            /* TODO: here maybe segamentation fault*/
-                            json_decref(recvd_session_JData);   
-                            json_decref(sent_session_JData);
+                            /* TODO: free(sent_session_JData) and free(sent_data_str) simultaneously maybe segamentation fault*/
+                            free(recvd_session_JData);   
+                            free(sent_session_JData);
                             free(sent_data_str);
                             break;
                         }
                     case FS_UPLOAD_READY:
                         {
-                            fprintf(stderr, "METADATA_SERVER: receive FS_UPLOAD_READY:%s\n", recvd_data_str);
-                            
+                            fprintf(stderr, "\nMETADATA_SERVER: receive FS_UPLOAD_READY:%s\n", recvd_data_str);
                             /* get session info */
                             char *session_id;
                             json_unpack(recvd_session_JData, "{s:s}", "session_id", &session_id);
                             struct session_info_t *session = get_session(session_id);
 
+/*
+                            json_t *sent_session_JData = json_object(); 
+                            json_object_set_new(sent_session_JData, "metadata_type", json_integer(FS_UPLOAD_READY));
+                            char *sent_data_str = json_dumps(sent_session_JData, 0);
+*/
                             /* sent the fs_SDP, fs_candidates to client  */
-                            char *sent_data_str = recvd_data_str;
-                            struct writedata_info_t *write_data = *write_data_ptr;
-                            strcpy(write_data->data, sent_data_str);
+                            struct lwst_writedata_t *write_data = *write_data_ptr;
+                            strcpy(write_data->data, recvd_data_str);
                             write_data->target_wsi = session->client_wsi;
                             write_data->type = FS_UPLOAD_READY;
-                           
-                            libwebsocket_callback_on_writable(context, wsi);
+                            //libwebsocket_callback_on_writable(context, wsi);
+                            
+                            libwebsocket_write(write_data->target_wsi, (void *)write_data->data, strlen(write_data->data), LWS_WRITE_TEXT);
                             /* free memory */
                             /* TODO: here maybe segamentation fault*/
-                            json_decref(recvd_session_JData);   
-                            //free(sent_data_str);
+                            free(recvd_session_JData);   
+                            recvd_session_JData=NULL;
                         }
                     default:
                         break;
@@ -790,12 +790,12 @@ static int callback_SDP(struct libwebsocket_context *context,
             {
                 int lws_err;
                 size_t data_len;
-                struct writedata_info_t *write_data = *write_data_ptr;
+                struct lwst_writedata_t *write_data = *write_data_ptr;
                 if((data_len = strlen(write_data->data)) >0 )
                 {   
                     lws_err = libwebsocket_write(write_data->target_wsi, (void *)write_data->data, data_len, LWS_WRITE_TEXT);
 #ifdef DEBUG_META
-                    fprintf(stderr, "METADATA_SERVER: write data:%s\n", write_data->data);
+                    fprintf(stderr, "METADATA_SERVER: write data:%s,%d\n", write_data->data, data_len);
 #endif
                     switch(write_data->type){
                         case(FS_REGISTER_OK_t):
@@ -872,13 +872,12 @@ static int callback_SDP(struct libwebsocket_context *context,
                             {
 #ifdef DEBUG_META
                                 if(lws_err<0)
-                                    fprintf(stderr, "METADATA_SERVER: send SY_UPLOAD_READY to fileserver fail\n");
+                                    fprintf(stderr, "METADATA_SERVER: send SY_UPLOAD_READY to client fail\n");
                                 else
-                                    fprintf(stderr, "METADATA_SERVER: send SY_UPLOAD_READY to fileserver\n");
+                                    fprintf(stderr, "METADATA_SERVER: send SY_UPLOAD_READY to client\n");
 #endif
                                 break;
                             }
-
                        default:
                             break;
                     }
@@ -897,20 +896,18 @@ static struct libwebsocket_protocols protocols[] = {
     {
         "http-only",
         callback_http,
-        0,
-        0,
+        0
     },
     {
         "fileserver-protocol",
         callback_SDP,
-        1024,
-        10,
+        2048,
     },
     {
         "client-protocol",
         callback_SDP,
-        1024,
-        10,
+        2048,
+        0
     },
     { NULL, NULL, 0, 0 }
 };
