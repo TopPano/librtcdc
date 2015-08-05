@@ -14,9 +14,12 @@
 #include "cli_rtcdc.h"
 #include "sy.h"
 
-#define LINE_SIZE 32
+#define MD5_LINE_SIZE 32
 #define LOCAL_REPO_PATH "/home/uniray/local_repo/"
 #define METADATA_SERVER_IP "localhost"
+
+
+
 
 typedef struct rtcdc_peer_connection rtcdc_peer_connection;
 typedef struct rtcdc_data_channel rtcdc_data_channel;
@@ -34,13 +37,13 @@ char *gen_md5(char *filename)
     unsigned char *hash = (unsigned char *)calloc(1, MD5_DIGEST_LENGTH);
     MD5_CTX ctx;
     MD5_Init(&ctx);
-    char buf[LINE_SIZE];
-    memset(buf, 0, LINE_SIZE);
+    char buf[MD5_LINE_SIZE];
+    memset(buf, 0, MD5_LINE_SIZE);
     if(pFile!=NULL)
     {
         while ((nread = fread(buf, 1, sizeof buf, pFile)) > 0)
         {    
-            memset(buf, 0, LINE_SIZE);
+            memset(buf, 0, MD5_LINE_SIZE);
             MD5_Update(&ctx, (const void *)buf, nread);
         }
 
@@ -226,9 +229,9 @@ uint8_t sy_init(struct sy_session_t *sy_session, char *repo_name, char *local_re
     json_unpack(recvd_lws_JData, "{s:s}", "session_id", &(session_id));
     json_unpack(recvd_lws_JData, "{s:s}", "URI_code", &(URI_code));
 
-    sy_session->session_id = (char *)calloc(1, strlen(session_id));
-    sy_session->URI_code = (char *)calloc(1, strlen(URI_code));
-    sy_session->local_repo_path = (char *)calloc(1, strlen(local_repo_path));
+    sy_session->session_id = (char *)calloc(1, strlen(session_id)+1);
+    sy_session->URI_code = (char *)calloc(1, strlen(URI_code)+1);
+    sy_session->local_repo_path = (char *)calloc(1, strlen(local_repo_path)+1);
     strcpy(sy_session->session_id, session_id);
     strcpy(sy_session->URI_code, URI_code);
     strcpy(sy_session->local_repo_path, local_repo_path);
@@ -459,7 +462,6 @@ uint8_t sy_upload(struct sy_session_t *sy_session, struct sy_diff_t *sy_session_
     struct rtcdc_peer_connection *offerer = rtcdc_create_peer_connection((void *)upload_client_on_channel, (void *)on_candidate, 
                                                                         (void *)upload_client_on_connect,STUN_IP, 0, 
                                                                         (void *)&rtcdc_info);
-    strncpy(rtcdc_info.local_repo_path, LOCAL_REPO_PATH, strlen(LOCAL_REPO_PATH));
     client_SDP = rtcdc_generate_offer_sdp(offerer);
     /* send request: upload files which the fileserver doesnt have */
     /* write SY_UPLOAD, SDP, candidate and session_id */
@@ -495,6 +497,10 @@ uint8_t sy_upload(struct sy_session_t *sy_session, struct sy_diff_t *sy_session_
 
     rtcdc_parse_offer_sdp(offerer, fs_SDP);
     parse_candidates(offerer, fs_candidates);
+
+    /* pass the rtcdc_info data*/
+    strncpy(rtcdc_info.local_repo_path, LOCAL_REPO_PATH, strlen(LOCAL_REPO_PATH));
+    rtcdc_info.sy_session_diff = sy_session_diff;
     /* rtcdc connection */
     rtcdc_loop(offerer);
     /* TODO: when the rtcdc_loop terminate? */

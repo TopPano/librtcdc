@@ -4,14 +4,14 @@
 /* TODO: what's DATASIZE?*/
 #define DATASIZE 1024
 
-struct URI_info_t{
+struct ms_URI_info_t{
     struct libwebsocket *fileserver_wsi;
     char repo_name[REPO_NAME_SIZE];
     char URI_code[ID_SIZE];
 };
 
 
-struct session_info_t{
+struct ms_session_info_t{
     struct libwebsocket *fileserver_wsi;
     struct libwebsocket *client_wsi;
     char repo_name[REPO_NAME_SIZE];

@@ -1,7 +1,7 @@
 #include <rtcdc.h>
 #include <uv.h>
+#include "../common.h"
 
-#define SDP_SIZE 2048
 #define PATH_SIZE 128
 #define STUN_IP "stun.services.mozilla.com"
 

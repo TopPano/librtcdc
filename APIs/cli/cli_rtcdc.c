@@ -2,26 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "cli_rtcdc.h"
-
-void upload_client_on_message(struct rtcdc_data_channel *channel,
-                              int datatype, void *data, 
-                              size_t len, void *user_data)
-{
-    struct sy_rtcdc_info_t *tt = (struct sy_rtcdc_info_t *)user_data;
-    printf("RTCDC:upload_client_on_message:local_repo_path:%s\n", tt->local_repo_path);
-   
-}
-
-
-void upload_client_on_open_channel(struct rtcdc_data_channel *channel, void *user_data)
-{
-#ifdef DEBUG_RTCDC
-    fprintf(stderr, "signaling_rtcdc: upload client on_open_channel\n");
-#endif
-    struct sy_rtcdc_info_t *tt = (struct sy_rtcdc_info_t *)user_data;
-    printf("%s\n", tt->local_repo_path);
-}
-
+#include "sy.h"
 
 void on_candidate(struct rtcdc_peer_connection *peer, 
                     char *candidate, 
@@ -34,6 +15,36 @@ void on_candidate(struct rtcdc_peer_connection *peer,
     char *candidate_set = ((struct sy_rtcdc_info_t *)user_data)->local_candidates;
     strcat(candidate_set, candidate);
     strcat(candidate_set, endl);
+}
+
+
+void upload_client_on_message(struct rtcdc_data_channel *channel,
+                              int datatype, void *data, 
+                              size_t len, void *user_data)
+{
+    printf("receive from fs\n");
+
+}
+
+
+void upload_client_on_open(struct rtcdc_data_channel *channel, void *user_data)
+{
+#ifdef DEBUG_RTCDC
+    fprintf(stderr, "signaling_rtcdc: upload client on_open\n");
+#endif
+    
+    int i = 0;
+    
+        char h[30];
+    while(1)
+    {
+        i++;
+        fgetc(stdin);
+        sprintf(h,"hhihihihhihihihhihihihihihihih%d\0", i);
+        rtcdc_send_message(channel, 0, (void *)h, strlen(h));
+        printf("%d\n", i);
+    }
+        /* start transfer files */    
 }
 
 
@@ -56,7 +67,7 @@ void upload_client_on_connect(struct rtcdc_peer_connection *peer
     fprintf(stderr, "signaling_rtcdc: start create data channel\n");
 #endif
     struct rtcdc_data_channel *upload_dc = rtcdc_create_data_channel(peer, "Upload Channel",
-                                                                    "", upload_client_on_open_channel,
+                                                                    "", upload_client_on_open,
                                                                     NULL, NULL, user_data);
     if(upload_dc == NULL)
         fprintf(stderr, "signaling_rtcdc: fail create data channel\n");

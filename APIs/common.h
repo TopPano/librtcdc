@@ -5,14 +5,29 @@
 #define WRITE_DATA_SIZE 2048
 #endif 
 
+#ifndef RTCDC_DATA_SIZE
+#define RTCDC_DATA_SIZE 1024
+#endif 
+
 #ifndef REPO_NAME_SIZE
-#define REPO_NAME_SIZE 64
+#define REPO_NAME_SIZE 32
 #endif 
 
 #ifndef ID_SIZE
 #define ID_SIZE 32
 #endif 
 
+#ifndef FILE_NAME_SIZE
+#define FILE_NAME_SIZE 32
+#endif 
+
+#ifndef SDP_SIZE
+#define SDP_SIZE 1400
+#endif 
+
+#ifndef LOCAL_PATH_SIZE
+#define LOCAL_PATH_SIZE 64
+#endif 
 
 typedef enum {
     FS_REGISTER_t = 0,

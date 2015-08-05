@@ -16,7 +16,7 @@
 
 
 #define WAREHOUSE_PATH "/home/uniray/warehouse/"
-#define LINE_SIZE 32
+#define MD5_LINE_SIZE 32
 
 
 typedef struct rtcdc_peer_connection rtcdc_peer_connection;
@@ -34,13 +34,13 @@ char *gen_md5(char *filename)
     unsigned char *hash = (unsigned char *)calloc(1, MD5_DIGEST_LENGTH);
     MD5_CTX ctx;
     MD5_Init(&ctx);
-    char buf[LINE_SIZE];
-    memset(buf, 0, LINE_SIZE);
+    char buf[MD5_LINE_SIZE];
+    memset(buf, 0, MD5_LINE_SIZE);
     if(pFile)
     {
         while ((nread = fread(buf, 1, sizeof buf, pFile)) > 0)
         {    
-            memset(buf, 0, LINE_SIZE);
+            memset(buf, 0, MD5_LINE_SIZE);
             MD5_Update(&ctx, (const void *)buf, nread);
         }
 
@@ -288,7 +288,7 @@ static int callback_fileserver(struct libwebsocket_context *context,
                             fprintf(stderr, "FILE_SERVER: receive SY_UPLOAD\n");
 #endif
                             /* get repo_name, and strcat repo_path, get client_SDP and client_candidate */
-                            char *client_SDP, *client_candidates, *repo_name, *session_id;
+                            char client_SDP[1024], *client_candidates, *repo_name, *session_id;
                             
                             json_unpack(recvd_session_JData, "{s:s, s:s, s:s, s:s}", 
                                         "client_SDP", &client_SDP,
@@ -303,7 +303,7 @@ static int callback_fileserver(struct libwebsocket_context *context,
                                                                                             (void *)on_candidate,
                                                                                             (void *)upload_fs_on_connect,
                                                                                             STUN_IP, 0, (void *)&rtcdc_info);
-                            client_SDP = (char *)json_string_value(json_object_get(recvd_session_JData, "client_SDP"));
+                            strcpy(client_SDP, (char *)json_string_value(json_object_get(recvd_session_JData, "client_SDP")));
                             rtcdc_parse_offer_sdp(answerer, client_SDP);
                             parse_candidates(answerer, client_candidates);
                             fs_SDP = rtcdc_generate_offer_sdp(answerer);
@@ -323,7 +323,9 @@ static int callback_fileserver(struct libwebsocket_context *context,
                             write_data->type = FS_UPLOAD_READY;
                             strcpy(write_data->data, sent_data_str);
                             libwebsocket_callback_on_writable(context, wsi);
-
+                            
+                            /* TODO: free memory */
+                            
                             /* assign repo_path into rtcdc_info */
                             char repo_path[PATH_SIZE];
                             strcpy(repo_path, WAREHOUSE_PATH);
@@ -335,10 +337,12 @@ static int callback_fileserver(struct libwebsocket_context *context,
                             uv_loop_t *main_loop = uv_default_loop();
                             uv_work_t work;
                             work.data = (void *)answerer;
+                            
                             uv_queue_work(main_loop, &work, uv_rtcdc_loop, NULL);
+                            /* TODO: it needs to sleep or segamentation fault. here contains bug */
+                            sleep(3);
                             /* TODO: when the rtcdc_loop terminate? */
-                            /* TODO: free memory */
-                                break;
+                            break;
                         }
                     default:
                         break;

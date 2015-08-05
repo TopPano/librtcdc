@@ -21,19 +21,19 @@ void upload_fs_on_message(struct rtcdc_data_channel *channel,
                           int datatype, void *data, 
                           size_t len, void *user_data)
 {
-    struct sy_rtcdc_info_t *tt = (struct sy_rtcdc_info_t *)user_data;
-    printf("RTCDC:upload_fs_on_message:local_repo_path:%s\n", tt->local_repo_path);
-
+//    struct sy_rtcdc_info_t *tt = (struct sy_rtcdc_info_t *)user_data;
+//    printf("RTCDC:upload_fs_on_message:local_repo_path:%s\n", tt->local_repo_path);
+    printf("receive from client: %s\n", (char *)data);
 }
 
 
-void upload_fs_on_open_channel()
+void upload_fs_on_open_channel(struct rtcdc_data_channel *channel, void *user_data)
 {
 #ifdef DEBUG_RTCDC
     fprintf(stderr, "signaling_rtcdc: upload fs on_open_channel\n");
 #endif
-}
 
+}
 
 void upload_fs_on_channel(struct rtcdc_peer_connection *peer,
                 struct rtcdc_data_channel *dc,
@@ -93,7 +93,6 @@ void parse_candidates(struct rtcdc_peer_connection *peer, char *candidates)
     char *line;
     while((line = getline_candidates(&candidates)) != NULL){    
         rtcdc_parse_candidate_sdp(peer, line);
-        // printf("%s\n", line);
     }
 }
 

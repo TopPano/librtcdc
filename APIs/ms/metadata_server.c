@@ -99,7 +99,7 @@ char *insert_session(struct libwebsocket *fileserver_wsi, struct libwebsocket *c
 }
 
 
-uint8_t insert_filesys(struct URI_info_t *repo_URI)
+uint8_t insert_filesys(struct ms_URI_info_t *repo_URI)
 {
     bson_t *doc = bson_new();
     bson_error_t error;
@@ -212,7 +212,7 @@ uint8_t update_session(char *session_id, char *field, void *value)
     return 1;
 }
 
-struct session_info_t *get_session(char *session_id)
+struct ms_session_info_t *get_session(char *session_id)
 {
     mongoc_cursor_t *cursor = NULL;
     const bson_t *find_context = NULL ;
@@ -226,7 +226,7 @@ struct session_info_t *get_session(char *session_id)
     /* TODO proj may be deleted */
     cursor = mongoc_collection_find (session_coll, MONGOC_QUERY_NONE, 0, 0, 0, find_query, proj, NULL);
 
-    struct session_info_t *session = NULL;
+    struct ms_session_info_t *session = NULL;
     if ( mongoc_cursor_next(cursor, &find_context) == 0){
 #ifdef DEBUG_META
         fprintf(stderr, "METADATA_SERVER: session_id %s does not exist in db.session\n", session_id);
@@ -245,7 +245,7 @@ struct session_info_t *get_session(char *session_id)
         json_t *repo_name_json = json_object_get(find_context_json, "repo_name");
         json_t *files_json = json_object_get(find_context_json, "files");
 
-        session = (struct session_info_t *)calloc(1, sizeof(struct session_info_t));
+        session = (struct ms_session_info_t *)calloc(1, sizeof(struct ms_session_info_t));
 
         intptr_t fileserver_wsi_ptr = (intptr_t)((int)json_integer_value(fileserver_wsi_json));
         session->fileserver_wsi = (struct libwebsocket *)fileserver_wsi_ptr;
@@ -266,7 +266,7 @@ struct session_info_t *get_session(char *session_id)
     return session;
 }
 
-struct URI_info_t *get_URI(char *URI_code)
+struct ms_URI_info_t *get_URI(char *URI_code)
 {
     mongoc_cursor_t *cursor = NULL;
     const bson_t *find_context = NULL ;
@@ -277,7 +277,7 @@ struct URI_info_t *get_URI(char *URI_code)
     BSON_APPEND_BOOL(proj, "repo_name", true);
     cursor = mongoc_collection_find (filesys_coll, MONGOC_QUERY_NONE, 0, 0, 0, find_query, proj, NULL);
 
-    struct URI_info_t *URI = NULL;
+    struct ms_URI_info_t *URI = NULL;
     if ( mongoc_cursor_next(cursor, &find_context) == 0){
 #ifdef DEBUG_META
         fprintf(stderr, "METADATA_SERVER: URI_code %s does not exist in db.filesys\n", URI_code);
@@ -285,7 +285,7 @@ struct URI_info_t *get_URI(char *URI_code)
         return NULL;
     }
     else{
-        URI = (struct URI_info_t *)calloc(1, sizeof(struct URI_info_t));
+        URI = (struct ms_URI_info_t *)calloc(1, sizeof(struct ms_URI_info_t));
         bson_iter_t iter, value;
         bson_iter_init(&iter, find_context);
         bson_iter_find_descendant(&iter, "fileserver_wsi", &value);
@@ -334,6 +334,9 @@ struct libwebsocket* get_wsi(char *fileserver_name)
         return wsi;
     }
 }
+
+
+
 
 /* TODO: it needs to check unfreed memory */
 json_t *join_checksum_arrays(char *pivot_key, json_t *A_array_json, char *A_key, json_t *B_array_json, char *B_key)
@@ -512,8 +515,8 @@ static int callback_SDP(struct libwebsocket_context *context,
                             bson_oid_init (&oid, NULL);
                             bson_oid_to_string(&oid, URI_code);
                             /* lookup fileserver_wsi and repo_name */
-                            struct session_info_t *session = get_session(session_id);
-                            struct URI_info_t *repo_URI = (struct URI_info_t *)calloc(1, sizeof(struct URI_info_t));
+                            struct ms_session_info_t *session = get_session(session_id);
+                            struct ms_URI_info_t *repo_URI = (struct ms_URI_info_t *)calloc(1, sizeof(struct ms_URI_info_t));
                             strcpy(repo_URI->URI_code, URI_code);
                             strcpy(repo_URI->repo_name, session->repo_name);
                             repo_URI->fileserver_wsi = session->fileserver_wsi;
@@ -558,10 +561,10 @@ static int callback_SDP(struct libwebsocket_context *context,
 
                             char *session_id, *URI_code, *repo_name;
                             struct libwebsocket *fileserver_wsi, *client_wsi;
-                            /* lookup the URI_code existed, and get URI_info_t */
+                            /* lookup the URI_code existed, and get ms_URI_info_t */
 
                             json_unpack(recvd_session_JData, "{s:s}", "URI_code", &URI_code);
-                            struct URI_info_t *URI;
+                            struct ms_URI_info_t *URI;
                             /* if the URI_code not exist, send SY_REPO_NOT_EXIST and break */
                             if((URI = get_URI(URI_code)) == NULL)
                             {
@@ -607,7 +610,7 @@ static int callback_SDP(struct libwebsocket_context *context,
                             /* get session info */
                             char *session_id;
                             json_unpack(recvd_session_JData, "{s:s}", "session_id", &session_id);
-                            struct session_info_t *session = get_session(session_id);
+                            struct ms_session_info_t *session = get_session(session_id);
 
                             /* update client checksum in the session table */
                             METADATAtype state = SY_STATUS;
@@ -650,7 +653,7 @@ static int callback_SDP(struct libwebsocket_context *context,
                             /* get session info */
                             char *session_id;
                             json_unpack(recvd_session_JData, "{s:s}", "session_id", &session_id);
-                            struct session_info_t *session = get_session(session_id);
+                            struct ms_session_info_t *session = get_session(session_id);
 
                             /* get the fs checksum from the session*/
                             json_t *fs_checksum_array_json = json_object_get(recvd_session_JData, "files");
@@ -727,7 +730,7 @@ static int callback_SDP(struct libwebsocket_context *context,
                                         "client_SDP", &client_SDP,
                                         "client_candidates", &client_candidates);
 
-                            struct session_info_t *session = get_session(session_id);
+                            struct ms_session_info_t *session = get_session(session_id);
                             /* update client_wsi*/
                             if(update_session(session_id, "client_wsi", (void *)wsi) == 0){
                                 /* TODO: if update failed, what to do? */
@@ -761,7 +764,7 @@ static int callback_SDP(struct libwebsocket_context *context,
                             /* get session info */
                             char *session_id;
                             json_unpack(recvd_session_JData, "{s:s}", "session_id", &session_id);
-                            struct session_info_t *session = get_session(session_id);
+                            struct ms_session_info_t *session = get_session(session_id);
 
 /*
                             json_t *sent_session_JData = json_object(); 
