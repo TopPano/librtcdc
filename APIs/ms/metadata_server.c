@@ -7,7 +7,7 @@
 #include <bson.h>
 #include <mongoc.h>
 #include "ms_struct.h"
-#include "../lwst.h"
+#include "../sy_lwst.h"
 
 static struct libwebsocket_context *context;
 static volatile int force_exit = 0;

@@ -11,7 +11,8 @@
 #include <errno.h>
 #include <jansson.h>
 #include <sys/stat.h>
-#include "../lwst.h"
+#include "../sy_lwst.h"
+#include "../sy_rtcdc.h"
 #include "fs_rtcdc.h"
 
 
@@ -322,25 +323,25 @@ static int callback_fileserver(struct libwebsocket_context *context,
                             write_data->target_wsi = wsi;
                             write_data->type = FS_UPLOAD_READY;
                             strcpy(write_data->data, sent_data_str);
-                            libwebsocket_callback_on_writable(context, wsi);
-                            
+                            //libwebsocket_callback_on_writable(context, wsi);
+                            int lws_err;
+                            lws_err = libwebsocket_write(write_data->target_wsi, (void *) write_data->data, strlen(write_data->data), LWS_WRITE_TEXT);
                             /* TODO: free memory */
                             
-                            /* assign repo_path into rtcdc_info */
-                            char repo_path[PATH_SIZE];
-                            strcpy(repo_path, WAREHOUSE_PATH);
-                            strcat(repo_path, repo_name);
+                            /* TODO: assign repo_path into rtcdc_info */
 #ifdef DEBUG_FS2
                             fprintf(stderr, "FILE_SERVER: FS_UPLOAD_READY: waiting rtcdc connection\n");
 #endif
                             /* allocate a uv to run rtcdc_loop */
+                            /*
                             uv_loop_t *main_loop = uv_default_loop();
                             uv_work_t work;
                             work.data = (void *)answerer;
-                            
                             uv_queue_work(main_loop, &work, uv_rtcdc_loop, NULL);
+                            */
+                            rtcdc_loop(answerer);
                             /* TODO: it needs to sleep or segamentation fault. here contains bug */
-                            sleep(3);
+                            //sleep(3);
                             /* TODO: when the rtcdc_loop terminate? */
                             break;
                         }

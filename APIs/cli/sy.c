@@ -10,15 +10,14 @@
 #include <openssl/md5.h>
 
 #include <rtcdc.h>
-#include "../lwst.h"
+#include "../sy_lwst.h"
+#include "../sy_rtcdc.h"
 #include "cli_rtcdc.h"
 #include "sy.h"
 
 #define MD5_LINE_SIZE 32
 #define LOCAL_REPO_PATH "/home/uniray/local_repo/"
 #define METADATA_SERVER_IP "localhost"
-
-
 
 
 typedef struct rtcdc_peer_connection rtcdc_peer_connection;
@@ -501,18 +500,17 @@ uint8_t sy_upload(struct sy_session_t *sy_session, struct sy_diff_t *sy_session_
     /* pass the rtcdc_info data*/
     strncpy(rtcdc_info.local_repo_path, LOCAL_REPO_PATH, strlen(LOCAL_REPO_PATH));
     rtcdc_info.sy_session_diff = sy_session_diff;
+    rtcdc_info.uv_loop = main_loop; 
     /* rtcdc connection */
     rtcdc_loop(offerer);
     /* TODO: when the rtcdc_loop terminate? */
     uv_run(main_loop, UV_RUN_DEFAULT);
-
     /* free memory */
     free(client_SDP);
     free(recvd_lws_JData);
     free(sent_lws_JData); 
     recvd_lws_JData = NULL;
     sent_lws_JData = NULL;
-    uv_run(main_loop, UV_RUN_DEFAULT);
 
     free(metadata_conn);
     free(sent_lws_JData);
@@ -549,7 +547,6 @@ int main(int argc, char *argv[]){
        else
        fprintf(stderr, "sy_connect failed");
        */
-
     struct sy_diff_t *sy_session_diff = sy_default_diff();
     sy_status(sy_session, sy_session_diff);
 
@@ -558,7 +555,6 @@ int main(int argc, char *argv[]){
     {
         printf("filename:%s, dirty:%d\n", (sy_session_diff->files_diff[i]).filename, (sy_session_diff->files_diff[i]).dirty);
     }
-
     printf("\n");
     sy_upload(sy_session, sy_session_diff);
     return 0;

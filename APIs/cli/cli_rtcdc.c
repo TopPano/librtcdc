@@ -4,18 +4,54 @@
 #include "cli_rtcdc.h"
 #include "sy.h"
 
-void on_candidate(struct rtcdc_peer_connection *peer, 
-                    char *candidate, 
-                    void *user_data)
+
+void uv_upload(uv_work_t *work)
 {
-#ifdef DEBUG_RTCDC
-    //fprintf(stderr, "signaling_rtcdc: on candidate\n");
-#endif
-    char *endl = "\n";
-    char *candidate_set = ((struct sy_rtcdc_info_t *)user_data)->local_candidates;
-    strcat(candidate_set, candidate);
-    strcat(candidate_set, endl);
+    struct sy_rtcdc_info_t *rtcdc_info = (struct sy_rtcdc_info_t *)work->data;
+    struct rtcdc_data_channel *data_channel = rtcdc_info->data_channel; 
+    const struct sy_diff_t *sy_session_diff = rtcdc_info->sy_session_diff;
+    struct diff_info_t *file = sy_session_diff->files_diff;
+    char local_file_path[LOCAL_PATH_SIZE];
+    int files_num = sy_session_diff->num;
+    int i, packet_index;
+    struct sctp_packet_t packet;
+    for(i = 0; i<files_num; i++)
+    {
+        memset(local_file_path, 0, LOCAL_PATH_SIZE);
+        strncpy(local_file_path, rtcdc_info->local_repo_path, strlen(rtcdc_info->local_repo_path));
+        strcat(local_file_path, file[i].filename);
+        if(file[i].dirty == FILE_FS_LACK || file[i].dirty == FILE_DIRTY)
+        {
+            FILE *pFile;
+            pFile = fopen(local_file_path, "r");
+            if(pFile == NULL)
+                fprintf(stderr, "fail open file: %s\n", local_file_path);
+            else{
+                packet_index = 0;
+                memset(&packet, 0, sizeof(packet));
+                packet.index = packet_index;
+                strcpy(packet.buf, local_file_path);
+
+                rtcdc_send_message(data_channel, RTCDC_DATATYPE_STRING, (void *)&packet, sizeof(packet));
+
+                while(!feof(pFile))
+                {
+                    packet_index++;
+                    memset(&packet, 0, sizeof(packet));
+                    if(fgets(packet.buf, SCTP_BUF_SIZE, pFile) == NULL)
+                        break;
+                    packet.index = packet_index;
+                    packet.buf_len = strlen(packet.buf);
+                    rtcdc_send_message(data_channel, RTCDC_DATATYPE_STRING, (void *)&packet, sizeof(packet));
+                    usleep(100);
+                }
+                fclose(pFile);
+            }
+            printf("file_path: %s\n", local_file_path);
+        }
+    }
 }
+
 
 
 void upload_client_on_message(struct rtcdc_data_channel *channel,
@@ -23,7 +59,6 @@ void upload_client_on_message(struct rtcdc_data_channel *channel,
                               size_t len, void *user_data)
 {
     printf("receive from fs\n");
-
 }
 
 
@@ -32,19 +67,17 @@ void upload_client_on_open(struct rtcdc_data_channel *channel, void *user_data)
 #ifdef DEBUG_RTCDC
     fprintf(stderr, "signaling_rtcdc: upload client on_open\n");
 #endif
+    /* allocate a uv work to upload files */
+    struct sy_rtcdc_info_t *rtcdc_info = (struct sy_rtcdc_info_t *)user_data; 
+    rtcdc_info->data_channel = channel;
+    uv_loop_t *uv_loop = (uv_loop_t *)rtcdc_info->uv_loop;
     
-    int i = 0;
-    
-        char h[30];
-    while(1)
-    {
-        i++;
-        fgetc(stdin);
-        sprintf(h,"hhihihihhihihihhihihihihihihih%d\0", i);
-        rtcdc_send_message(channel, 0, (void *)h, strlen(h));
-        printf("%d\n", i);
-    }
-        /* start transfer files */    
+    /* TODO: uniray: i dont know why it will segamentation fault in uv_upload if without declaring tt */
+    struct sy_rtcdc_info_t tt;
+
+    uv_work_t upload_work;
+    upload_work.data = (void *)rtcdc_info;
+    uv_queue_work(uv_loop, &upload_work, uv_upload, NULL);
 }
 
 
@@ -73,39 +106,4 @@ void upload_client_on_connect(struct rtcdc_peer_connection *peer
         fprintf(stderr, "signaling_rtcdc: fail create data channel\n");
 }
 
-
-void uv_rtcdc_loop(uv_work_t *work)
-{
-    struct rtcdc_peer_connection *peer = (struct rtcdc_peer_connection *)work->data;
-    rtcdc_loop(peer);
-}
-
-char *getline_candidates(char **string)
-{
-    char *line = (char *)calloc(1, 128*sizeof(char));
-    int str_iter;
-    if((*string)[0] == 0)
-        return NULL;
-    for (str_iter = 0; ; str_iter++)
-    {
-        if((*string)[str_iter] != '\n')
-            line[str_iter] = (*string)[str_iter];
-        else
-        {    
-            *string+=(str_iter+1); 
-            break;
-        }
-    }
-    return line;
-
-}
-
-void parse_candidates(struct rtcdc_peer_connection *peer, char *candidates)
-{
-    char *line;
-    while((line = getline_candidates(&candidates)) != NULL){    
-        rtcdc_parse_candidate_sdp(peer, line);
-        // printf("%s\n", line);
-    }
-}
 

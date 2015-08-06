@@ -21,10 +21,6 @@
 #define FILE_NAME_SIZE 32
 #endif 
 
-#ifndef SDP_SIZE
-#define SDP_SIZE 1400
-#endif 
-
 #ifndef LOCAL_PATH_SIZE
 #define LOCAL_PATH_SIZE 64
 #endif 

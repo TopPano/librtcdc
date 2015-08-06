@@ -1,7 +1,7 @@
 #include <syslog.h>
 //#include <signal.h>
 #include <string.h>
-#include "lwst.h"
+#include "sy_lwst.h"
 
 struct lwst_conn_t* lwst_initial(const char *address, 
                                     int port, 
