@@ -500,6 +500,7 @@ uint8_t sy_upload(struct sy_session_t *sy_session, struct sy_diff_t *sy_session_
     /* pass the rtcdc_info data*/
     strncpy(rtcdc_info.local_repo_path, LOCAL_REPO_PATH, strlen(LOCAL_REPO_PATH));
     rtcdc_info.sy_session_diff = sy_session_diff;
+    rtcdc_info.peer = offerer;
     rtcdc_info.uv_loop = main_loop; 
     /* rtcdc connection */
     rtcdc_loop(offerer);

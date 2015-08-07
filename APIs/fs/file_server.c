@@ -323,25 +323,29 @@ static int callback_fileserver(struct libwebsocket_context *context,
                             write_data->target_wsi = wsi;
                             write_data->type = FS_UPLOAD_READY;
                             strcpy(write_data->data, sent_data_str);
-                            //libwebsocket_callback_on_writable(context, wsi);
-                            int lws_err;
-                            lws_err = libwebsocket_write(write_data->target_wsi, (void *) write_data->data, strlen(write_data->data), LWS_WRITE_TEXT);
+                            libwebsocket_callback_on_writable(context, wsi);
+                            //int lws_err;
+                            //lws_err = libwebsocket_write(write_data->target_wsi, (void *) write_data->data, strlen(write_data->data), LWS_WRITE_TEXT);
                             /* TODO: free memory */
                             
-                            /* TODO: assign repo_path into rtcdc_info */
-#ifdef DEBUG_FS2
+                            /* assign repo_path into rtcdc_info */
+                            strcpy(rtcdc_info.local_repo_path, WAREHOUSE_PATH);
+                            strcat(rtcdc_info.local_repo_path, repo_name);
+                            strcat(rtcdc_info.local_repo_path, "/");
+                            rtcdc_info.sy_session_diff = NULL;
+                            rtcdc_info.data_channel = NULL;
+                            rtcdc_info.uv_loop = NULL;
+
+#ifdef DEBUG_FS
                             fprintf(stderr, "FILE_SERVER: FS_UPLOAD_READY: waiting rtcdc connection\n");
 #endif
                             /* allocate a uv to run rtcdc_loop */
-                            /*
                             uv_loop_t *main_loop = uv_default_loop();
                             uv_work_t work;
                             work.data = (void *)answerer;
                             uv_queue_work(main_loop, &work, uv_rtcdc_loop, NULL);
-                            */
-                            rtcdc_loop(answerer);
                             /* TODO: it needs to sleep or segamentation fault. here contains bug */
-                            //sleep(3);
+                            sleep(3);
                             /* TODO: when the rtcdc_loop terminate? */
                             break;
                         }

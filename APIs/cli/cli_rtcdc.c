@@ -30,8 +30,9 @@ void uv_upload(uv_work_t *work)
                 packet_index = 0;
                 memset(&packet, 0, sizeof(packet));
                 packet.index = packet_index;
-                strcpy(packet.buf, local_file_path);
+                strcpy(packet.buf, file[i].filename);
 
+                printf("file_path: %s\n", local_file_path);
                 rtcdc_send_message(data_channel, RTCDC_DATATYPE_STRING, (void *)&packet, sizeof(packet));
 
                 while(!feof(pFile))
@@ -45,11 +46,18 @@ void uv_upload(uv_work_t *work)
                     rtcdc_send_message(data_channel, RTCDC_DATATYPE_STRING, (void *)&packet, sizeof(packet));
                     usleep(100);
                 }
+                memset(&packet, 0, sizeof(packet));
+                packet.index = -1;
+                packet.buf_len = 0;
+                rtcdc_send_message(data_channel, RTCDC_DATATYPE_STRING, (void *)&packet, sizeof(packet));
                 fclose(pFile);
             }
-            printf("file_path: %s\n", local_file_path);
         }
     }
+    /* TODO: uniray: i want to stop rtcdc loop, 
+     * but the next assignment will result in core dump or 
+     * "Inferior 1 (process 19439) exited with code 01" in gdb */
+    rtcdc_info->peer->exit_thread = 1;
 }
 
 

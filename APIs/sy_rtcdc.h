@@ -25,6 +25,7 @@ struct sy_rtcdc_info_t{
     char local_repo_path[LOCAL_PATH_SIZE];
     const struct sy_diff_t *sy_session_diff;
     struct rtcdc_data_channel *data_channel;
+    struct rtcdc_peer_connection *peer;
     uv_loop_t *uv_loop;
 };
 
