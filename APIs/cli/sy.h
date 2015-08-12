@@ -13,3 +13,5 @@ uint8_t sy_connect(struct sy_session_t *sy_session, char *URI_code, char *local_
 uint8_t sy_status(struct sy_session_t *sy_session, struct sy_diff_t* sy_session_diff);
 
 uint8_t sy_upload(struct sy_session_t *sy_session, struct sy_diff_t* sy_session_diff);
+
+uint8_t sy_download(struct sy_session_t *sy_session, struct sy_diff_t* sy_session_diff);

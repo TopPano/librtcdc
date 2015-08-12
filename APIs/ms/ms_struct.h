@@ -17,6 +17,7 @@ struct ms_session_info_t{
     char repo_name[REPO_NAME_SIZE];
     char session_id[ID_SIZE];
     char files[DATASIZE];
+    char diff[DATASIZE];
     METADATAtype state;
 };
 

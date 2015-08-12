@@ -136,11 +136,16 @@ static int callback_client(struct libwebsocket_context *context,
                         return -1;
                         break;
                     case FS_UPLOAD_READY:
-                        fprintf(stderr,"SYCLIENT: receive FS_UPLOAD_READY\n%s\n", session_SData);
+                        fprintf(stderr,"SYCLIENT: receive FS_UPLOAD_READY\n");
                         recvd_lws_JData = recvd_session_JData;
                         return -1;
                         break;
-                   default:
+                    case FS_DOWNLOAD_READY:
+                        fprintf(stderr,"SYCLIENT: receive FS_DOWNLOAD_READY\n");
+                        recvd_lws_JData = recvd_session_JData;
+                        return -1;
+                        break;
+                    default:
                         break;
                 }
             }
@@ -378,7 +383,7 @@ uint8_t sy_status(struct sy_session_t *sy_session, struct sy_diff_t *sy_session_
     }
     else
         perror ("Couldn't open the directory");
-    
+
     /* send the json object throw libwebsocket */
     recvd_lws_JData = NULL;
 
@@ -416,7 +421,7 @@ uint8_t sy_status(struct sy_session_t *sy_session, struct sy_diff_t *sy_session_
         strcpy(files_diff[file_array_index].filename, filename); 
         files_diff[file_array_index].dirty = dirty;
     }
-   
+
     sy_session_diff->files_diff = files_diff;
     sy_session_diff->num = file_array_size;
 
@@ -457,10 +462,10 @@ uint8_t sy_upload(struct sy_session_t *sy_session, struct sy_diff_t *sy_session_
     char *client_SDP;
     struct sy_rtcdc_info_t rtcdc_info;
     memset(&rtcdc_info, 0, sizeof(struct sy_rtcdc_info_t));
-    
+
     struct rtcdc_peer_connection *offerer = rtcdc_create_peer_connection((void *)upload_client_on_channel, (void *)on_candidate, 
-                                                                        (void *)upload_client_on_connect,STUN_IP, 0, 
-                                                                        (void *)&rtcdc_info);
+            (void *)upload_client_on_connect,STUN_IP, 0, 
+            (void *)&rtcdc_info);
     client_SDP = rtcdc_generate_offer_sdp(offerer);
     /* send request: upload files which the fileserver doesnt have */
     /* write SY_UPLOAD, SDP, candidate and session_id */
@@ -520,34 +525,117 @@ uint8_t sy_upload(struct sy_session_t *sy_session, struct sy_diff_t *sy_session_
 }
 
 
+uint8_t sy_download(struct sy_session_t *sy_session, struct sy_diff_t *sy_session_diff)
+{
+    /* connect to metadata server*/
+    const char *metadata_server_IP = METADATA_SERVER_IP;
+    uint16_t metadata_server_port = 7681;
+    uint8_t metadata_type;
+    char *session_id, *URI_code;
+    struct lwst_conn_t *metadata_conn;
+    metadata_conn = lwst_initial(metadata_server_IP, metadata_server_port, client_protocols, "client-protocol", NULL);
+    struct libwebsocket_context *context = metadata_conn->context;
+    struct libwebsocket *wsi = metadata_conn->wsi;
+    volatile uint8_t client_exit = 0;
+    metadata_conn->exit = &client_exit;
+
+    /* allocate a uv to run lwst_uv_connect() */
+    main_loop = uv_default_loop();
+    uv_work_t work;
+    work.data = (void *)metadata_conn;
+    uv_queue_work(main_loop, &work, lwst_uv_connect, NULL);
+
+    /* gen rtcdc SDP and candidates */
+    char *client_SDP;
+    struct sy_rtcdc_info_t rtcdc_info;
+    memset(&rtcdc_info, 0, sizeof(struct sy_rtcdc_info_t));
+
+    struct rtcdc_peer_connection *offerer = rtcdc_create_peer_connection((void *)download_client_on_channel, (void *)on_candidate, 
+            (void *)download_client_on_connect,STUN_IP, 0, 
+            (void *)&rtcdc_info);
+    client_SDP = rtcdc_generate_offer_sdp(offerer);
+    /* send request: download files which the client doesnt have */
+    /* write SY_DOWNLOAD, SDP, candidate and session_id */
+    sent_lws_JData = json_object();
+    json_object_set_new(sent_lws_JData, "metadata_type", json_integer(SY_DOWNLOAD));
+    json_object_set_new(sent_lws_JData, "session_id", json_string(sy_session->session_id));
+    json_object_set_new(sent_lws_JData, "client_SDP", json_string(client_SDP));
+    json_object_set_new(sent_lws_JData, "client_candidates", json_string(rtcdc_info.local_candidates));
+    recvd_lws_JData = NULL;
+
+    usleep(100000);
+    libwebsocket_callback_on_writable(context, wsi);
+
+    /* wait for SY_DOWNLOAD_READY fs SDP and candidate */
+    /* TODO: here needs mutex */
+    json_t *sy_download_json;
+    while(1){
+        if(recvd_lws_JData != NULL){
+            json_unpack(recvd_lws_JData, "{s:i}", "metadata_type", &metadata_type);
+            if(metadata_type == FS_DOWNLOAD_READY){
+                /* TODO:sy_init success, keep or close the libwebsocket connection?*/
+                sy_download_json = json_deep_copy(recvd_lws_JData); 
+                client_exit = 1;
+                break;
+            }
+        }
+        usleep(1000);
+    }
+    /* close the libwebsocket connection and then start rtcdc connection*/
+    /* parse fs_SDP and fs_candidates */
+    char *fs_SDP = (char *)json_string_value(json_object_get(sy_download_json, "fs_SDP"));
+    char *fs_candidates = (char *)json_string_value(json_object_get(sy_download_json, "fs_candidates"));
+
+    rtcdc_parse_offer_sdp(offerer, fs_SDP);
+    parse_candidates(offerer, fs_candidates);
+    
+    /* pass the rtcdc_info data*/
+    strncpy(rtcdc_info.local_repo_path, LOCAL_REPO_PATH, strlen(LOCAL_REPO_PATH));
+    rtcdc_info.sy_session_diff = sy_session_diff;
+    rtcdc_info.peer = offerer;
+    rtcdc_info.uv_loop = main_loop; 
+    /* rtcdc connection */
+    rtcdc_loop(offerer);
+    /* TODO: when the rtcdc_loop terminate? */
+    uv_run(main_loop, UV_RUN_DEFAULT);
+    /* free memory */
+    free(client_SDP);
+    json_decref(sy_download_json);
+    json_decref(recvd_lws_JData);
+    json_decref(sent_lws_JData); 
+    recvd_lws_JData = NULL;
+    sent_lws_JData = NULL;
+
+    free(metadata_conn);
+    free(sent_lws_JData);
+    /* return METADATAtype */
+    return SY_DOWNLOAD_OK;
+}
+
 
 int main(int argc, char *argv[]){
 
     struct sy_session_t *sy_session = sy_default_session();
     char *repo_name = "hhh";
     char local_repo_path[128];
-    // getcwd(local_repo_path, sizeof(local_repo_path));
     strcpy(local_repo_path, LOCAL_REPO_PATH);
     if(sy_init(sy_session, repo_name, local_repo_path, "apikey", "token") == SY_INIT_OK)
         fprintf(stderr, "sy_init finish\nsession_id:%s, URI_code:%s\n", sy_session->session_id, sy_session->URI_code);
     else
         fprintf(stderr, "sy_init failed\n");
-
     printf("\n");
-    //   free(sy_session);
+/* sy_connect()
+    char local_repo_path[128];
+    strcpy(local_repo_path, LOCAL_REPO_PATH);
+    char *URI_code = "55c82a205ad78936c67cc0f7";
+    if(sy_connect(sy_session, URI_code, local_repo_path, "apikey", "token") == SY_CONNECT_OK)
+        fprintf(stderr, "sy_connect finish\nsession_id:%s, URI_code:%s local_repo_path: %s\n", 
+                        sy_session->session_id, sy_session->URI_code, sy_session->local_repo_path);
+    else
+        fprintf(stderr, "sy_connect failed");
+    fgetc(stdin);
+*/
 
-
-    /*
-       char *URI_code = (char *)calloc(1, strlen(sy_session->URI_code));
-       strcpy(URI_code, sy_session->URI_code);
-
-       sy_session = sy_default_session();
-       if(sy_connect(sy_session, URI_code, local_repo_path, "apikey", "token") == SY_CONNECT_OK)
-       fprintf(stderr, "sy_connect finish\nsession_id:%s, URI_code:%s local_repo_path: %s\n", 
-       sy_session->session_id, sy_session->URI_code, sy_session->local_repo_pat);
-       else
-       fprintf(stderr, "sy_connect failed");
-       */
     struct sy_diff_t *sy_session_diff = sy_default_diff();
     sy_status(sy_session, sy_session_diff);
 
@@ -557,7 +645,9 @@ int main(int argc, char *argv[]){
         printf("filename:%s, dirty:%d\n", (sy_session_diff->files_diff[i]).filename, (sy_session_diff->files_diff[i]).dirty);
     }
     printf("\n");
-    sy_upload(sy_session, sy_session_diff);
+
+
+    sy_download(sy_session, sy_session_diff);
     return 0;
 }
 

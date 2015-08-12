@@ -34,8 +34,7 @@ typedef enum {
     FS_CONNECT_OK,
     FS_STATUS_OK,
     FS_UPLOAD_READY,
-    FS_UPLOAD_OK,
-    FS_DOWNLOAD_OK,
+    FS_DOWNLOAD_READY,
     SY_INIT,
     SY_REPO_EXIST,
     SY_INIT_OK,
@@ -52,8 +51,6 @@ typedef enum {
     SY_DOWNLOAD,
     SY_DOWNLOAD_OK,
     SY_SESSION_NOT_EXIST,
-    SY_SDP,
-    FS_SDP,
 } METADATAtype;
 
 
@@ -63,6 +60,19 @@ typedef enum {
     FILE_FS_LACK,
     FILE_DIRTY,
 } FILEstatus;
+
+
+struct sy_diff_t{
+    uint8_t num;
+    struct diff_info_t *files_diff;
+};
+
+
+struct diff_info_t{
+    char filename[FILE_NAME_SIZE];
+    FILEstatus dirty;
+    /* 1 is dirty, while 0 is not */
+};
 
 
 #endif // _SY_COMMON_H_

@@ -13,16 +13,4 @@ struct sy_session_t{
 };
 
 
-struct sy_diff_t{
-    uint8_t num;
-    struct diff_info_t *files_diff;
-};
-
-
-struct diff_info_t{
-    char filename[FILE_NAME_SIZE];
-    FILEstatus dirty;
-    /* 1 is dirty, while 0 is not */
-};
-
 #endif //_SY_CLI_STRUCT_H_

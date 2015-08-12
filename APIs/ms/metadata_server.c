@@ -69,17 +69,18 @@ char *insert_session(struct libwebsocket *fileserver_wsi, struct libwebsocket *c
     intptr_t client_wsi_ptr = (intptr_t)client_wsi;
     intptr_t fileserver_wsi_ptr = (intptr_t)fileserver_wsi;
 
-    bson_t insert_bson, file_array_bson;
+    bson_t insert_bson, file_array_bson, diff_array_bson;
     bson_error_t error;
     bson_init(&insert_bson);
     bson_init(&file_array_bson);
+    bson_init(&diff_array_bson);
     bson_append_utf8(&insert_bson, "session_id", strlen("session_id"), session_id, strlen(session_id));
     bson_append_int32(&insert_bson, "client_wsi", strlen("client_wsi"), client_wsi_ptr);
     bson_append_int32(&insert_bson, "fileserver_wsi", strlen("fileserver_wsi"), fileserver_wsi_ptr);
     bson_append_utf8(&insert_bson, "repo_name", strlen("repo_name"), repo_name, strlen(repo_name));
     bson_append_int32(&insert_bson, "state", strlen("state"), state);
     bson_append_array(&insert_bson, "files", strlen("files"), (const bson_t *)&file_array_bson);
-
+    bson_append_array(&insert_bson, "diff", strlen("diff"), (const bson_t *)&diff_array_bson);
     /*
        BSON_APPEND_UTF8 (doc, "session_id", session_id);
        BSON_APPEND_INT32 (doc, "client_wsi", client_wsi_ptr);
@@ -192,6 +193,33 @@ uint8_t update_session(char *session_id, char *field, void *value)
 
 
     }
+    else if (strcmp(field, "diff") == 0)
+    {
+        json_t *diff_array_json = (json_t *)value;
+        size_t index;
+        json_t *diff_element_json;
+
+        char *filename;
+        int dirty;
+
+        bson_t update_bson, set_bson, diff_array_bson, diff_element_bson;
+        bson_init(&update_bson);
+        bson_init(&set_bson);
+        bson_init(&diff_array_bson);
+        bson_init(&diff_element_bson);
+        
+        bson_append_document_begin(&update_bson, "$set", 4, &set_bson);
+        json_array_foreach(diff_array_json, index, diff_element_json){
+            json_unpack(diff_element_json, "{s:s, s:i}", "filename", &filename, "dirty", &dirty);
+            bson_append_utf8(&diff_element_bson, "filename", 8, filename, strlen(filename));
+            bson_append_int32(&diff_element_bson, "dirty", 5, dirty);
+            bson_append_document(&diff_array_bson, NULL, 0, (const bson_t *)&diff_element_bson);
+            bson_reinit(&diff_element_bson);
+        }
+        bson_append_array(&set_bson, "diff", 4, (const bson_t *)&diff_array_bson);
+        bson_append_document_end(&update_bson, &set_bson);
+        update = &update_bson;
+    }
     else{
 #ifdef DEBUG_META
         fprintf(stderr, "METADATA_SERVER: update_session(): the field not exist or the field cannot be changed(e.g repo_name)\n");
@@ -223,6 +251,7 @@ struct ms_session_info_t *get_session(char *session_id)
     BSON_APPEND_BOOL(proj, "client_wsi", true);
     BSON_APPEND_BOOL(proj, "repo_name", true);
     BSON_APPEND_BOOL(proj, "files", true);
+    BSON_APPEND_BOOL(proj, "diff", true);
     /* TODO proj may be deleted */
     cursor = mongoc_collection_find (session_coll, MONGOC_QUERY_NONE, 0, 0, 0, find_query, proj, NULL);
 
@@ -244,7 +273,8 @@ struct ms_session_info_t *get_session(char *session_id)
         json_t *client_wsi_json = json_object_get(find_context_json, "client_wsi");
         json_t *repo_name_json = json_object_get(find_context_json, "repo_name");
         json_t *files_json = json_object_get(find_context_json, "files");
-
+        json_t *diff_json = json_object_get(find_context_json, "diff");
+        
         session = (struct ms_session_info_t *)calloc(1, sizeof(struct ms_session_info_t));
 
         intptr_t fileserver_wsi_ptr = (intptr_t)((int)json_integer_value(fileserver_wsi_json));
@@ -253,12 +283,13 @@ struct ms_session_info_t *get_session(char *session_id)
         session->client_wsi = (struct libwebsocket *) client_wsi_ptr;
         strcpy(session->repo_name, json_string_value(repo_name_json));
         strcpy(session->files, json_dumps(files_json, 0));
+        strcpy(session->diff, json_dumps(diff_json, 0));
 
-        free(files_json);
-        free(repo_name_json);
-        free(client_wsi_json);
-        free(fileserver_wsi_json);
-
+        json_decref(files_json);
+        json_decref(repo_name_json);
+        json_decref(client_wsi_json);
+        json_decref(fileserver_wsi_json);
+        json_decref(diff_json);
         bson_free(find_context_str);
 
         strcpy(session->session_id, session_id);
@@ -698,6 +729,12 @@ static int callback_SDP(struct libwebsocket_context *context,
                                     json_object_set_new(sent_element, "dirty", json_integer(FILE_DIRTY));
                                 json_array_append(sent_array, sent_element); 
                             }
+                            
+                            /* update fs checksum in the field*/
+                            if(update_session(session_id, "diff", (void *)sent_array) == 0){
+                                /* TODO: if update failed, what to do? */
+                            }
+
 
                             /* send SY_STATUS_OK and a list of dirty file*/
                             json_object_set_new(sent_session_JData, "metadata_type", json_integer(SY_STATUS_OK));
@@ -722,7 +759,6 @@ static int callback_SDP(struct libwebsocket_context *context,
                     case SY_UPLOAD:
                         {
                             fprintf(stderr, "METADATA_SERVER: receive SY_UPLOAD\n");
-                            
                             /* get session info */
                             char *session_id, *client_SDP, *client_candidates;
                             json_unpack(recvd_session_JData, "{s:s, s:s, s:s}", 
@@ -752,20 +788,18 @@ static int callback_SDP(struct libwebsocket_context *context,
                            
                             libwebsocket_callback_on_writable(context, wsi);
                             /* free memory */
-                            /* TODO: free(sent_session_JData) and free(sent_data_str) simultaneously maybe segamentation fault*/
-                            free(recvd_session_JData);   
-                            free(sent_session_JData);
+                            json_decref(recvd_session_JData);   
+                            json_decref(sent_session_JData);
                             free(sent_data_str);
                             break;
                         }
                     case FS_UPLOAD_READY:
                         {
-                            fprintf(stderr, "\nMETADATA_SERVER: receive FS_UPLOAD_READY:%s\n", recvd_data_str);
+                            fprintf(stderr, "\nMETADATA_SERVER: receive FS_UPLOAD_READY\n");
                             /* get session info */
                             char *session_id;
                             json_unpack(recvd_session_JData, "{s:s}", "session_id", &session_id);
                             struct ms_session_info_t *session = get_session(session_id);
-
 /*
                             json_t *sent_session_JData = json_object(); 
                             json_object_set_new(sent_session_JData, "metadata_type", json_integer(FS_UPLOAD_READY));
@@ -776,13 +810,70 @@ static int callback_SDP(struct libwebsocket_context *context,
                             strcpy(write_data->data, recvd_data_str);
                             write_data->target_wsi = session->client_wsi;
                             write_data->type = FS_UPLOAD_READY;
-                            //libwebsocket_callback_on_writable(context, wsi);
+                            libwebsocket_callback_on_writable(context, wsi);
                             
-                            libwebsocket_write(write_data->target_wsi, (void *)write_data->data, strlen(write_data->data), LWS_WRITE_TEXT);
                             /* free memory */
-                            /* TODO: here maybe segamentation fault*/
-                            free(recvd_session_JData);   
+                            json_decref(recvd_session_JData);   
                             recvd_session_JData=NULL;
+                            break;
+                        }
+                    case SY_DOWNLOAD:
+                        {
+                            fprintf(stderr, "METADATA_SERVER: receive SY_DOWNLOAD\n");
+                            /* get session info */
+                            char *session_id, *client_SDP, *client_candidates;
+                            json_unpack(recvd_session_JData, "{s:s, s:s, s:s}", 
+                                        "session_id", &session_id,
+                                        "client_SDP", &client_SDP,
+                                        "client_candidates", &client_candidates);
+
+                            struct ms_session_info_t *session = get_session(session_id);
+                            /* update client_wsi*/
+                            if(update_session(session_id, "client_wsi", (void *)wsi) == 0){
+                                /* TODO: if update failed, what to do? */
+                            }
+
+                            /* send SY_DOWNLOAD, repo_name, client_SDP, client_candidate to fileserver */
+                            json_t *sent_session_JData = json_object(); 
+                            json_object_set_new(sent_session_JData, "metadata_type", json_integer(SY_DOWNLOAD));
+                            json_object_set_new(sent_session_JData, "session_id", json_string(session_id));
+                            json_object_set_new(sent_session_JData, "repo_name", json_string(session->repo_name));
+                            json_object_set_new(sent_session_JData, "client_SDP", json_string(client_SDP));
+                            json_object_set_new(sent_session_JData, "client_candidates", json_string(client_candidates));
+                            json_object_set_new(sent_session_JData, "diff", json_loads(session->diff, JSON_DECODE_ANY, NULL));
+                         
+                            char *sent_data_str = json_dumps(sent_session_JData, 0);
+                            struct lwst_writedata_t *write_data = *write_data_ptr;
+                            strcpy(write_data->data, sent_data_str);
+                            write_data->target_wsi = session->fileserver_wsi;
+                            write_data->type = SY_DOWNLOAD;
+                           
+                            libwebsocket_callback_on_writable(context, wsi);
+                            /* free memory */
+                            json_decref(recvd_session_JData);   
+                            json_decref(sent_session_JData);
+                            free(sent_data_str);
+                            break;
+                        }
+                    case FS_DOWNLOAD_READY:
+                        {
+                            fprintf(stderr, "\nMETADATA_SERVER: receive FS_DOWNLOAD_READY\n");
+                            /* get session info */
+                            char *session_id;
+                            json_unpack(recvd_session_JData, "{s:s}", "session_id", &session_id);
+                            struct ms_session_info_t *session = get_session(session_id);
+                            
+                            struct lwst_writedata_t *write_data = *write_data_ptr;
+                            strcpy(write_data->data, recvd_data_str);
+                            write_data->target_wsi = session->client_wsi;
+                            write_data->type = FS_DOWNLOAD_READY;
+                            libwebsocket_callback_on_writable(context, wsi);
+                            
+                            /* free memory */
+                            json_decref(recvd_session_JData);   
+                            recvd_session_JData=NULL;
+
+                            break;
                         }
                     default:
                         break;
@@ -881,7 +972,28 @@ static int callback_SDP(struct libwebsocket_context *context,
 #endif
                                 break;
                             }
-                       default:
+                        case(SY_DOWNLOAD):
+                            {
+#ifdef DEBUG_META
+                                if(lws_err<0)
+                                    fprintf(stderr, "METADATA_SERVER: send SY_DOWNLOAD to fileserver fail\n");
+                                else
+                                    fprintf(stderr, "METADATA_SERVER: send SY_DOWNLOAD to fileserver\n");
+#endif
+                                break;
+                            }
+                        case(FS_DOWNLOAD_READY):
+                            {
+#ifdef DEBUG_META
+                                if(lws_err<0)
+                                    fprintf(stderr, "METADATA_SERVER: send FS_DOWNLOAD_READY to fileserver fail\n");
+                                else
+                                    fprintf(stderr, "METADATA_SERVER: send FS_DOWNLOAD_READY to fileserver\n");
+#endif
+                                break;
+                            }
+
+                        default:
                             break;
                     }
                 }

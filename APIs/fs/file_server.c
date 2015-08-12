@@ -101,7 +101,7 @@ static int callback_fileserver(struct libwebsocket_context *context,
         case LWS_CALLBACK_CLOSED:
             fprintf(stderr, "FILE_SERVER: LWS_CALLBACK_CLOSED\n");
             // TODO when close signaling session, fileserver needs to deregister to signaling server
-            fileserver_exit = 1;
+            fileserver_exit = -1;
             break;
         case LWS_CALLBACK_CLIENT_WRITEABLE:
             {
@@ -153,6 +153,17 @@ static int callback_fileserver(struct libwebsocket_context *context,
 #endif
                                 break;
                             }
+                        case FS_DOWNLOAD_READY:
+                            {
+#ifdef DEBUG_FS
+                                if(lws_err<0)
+                                    fprintf(stderr, "FILE_SERVER: send FS_DOWNLOAD_READY fail\n");
+                                else 
+                                    fprintf(stderr, "FILE_SERVER: send FS_DOWNLOAD_READY\n");
+#endif
+                                break;
+                            }
+
                         default:
                             break;
                     }                
@@ -289,7 +300,7 @@ static int callback_fileserver(struct libwebsocket_context *context,
                             fprintf(stderr, "FILE_SERVER: receive SY_UPLOAD\n");
 #endif
                             /* get repo_name, and strcat repo_path, get client_SDP and client_candidate */
-                            char client_SDP[1024], *client_candidates, *repo_name, *session_id;
+                            char *client_SDP, *client_candidates, *repo_name, *session_id;
                             
                             json_unpack(recvd_session_JData, "{s:s, s:s, s:s, s:s}", 
                                         "client_SDP", &client_SDP,
@@ -304,7 +315,6 @@ static int callback_fileserver(struct libwebsocket_context *context,
                                                                                             (void *)on_candidate,
                                                                                             (void *)upload_fs_on_connect,
                                                                                             STUN_IP, 0, (void *)&rtcdc_info);
-                            strcpy(client_SDP, (char *)json_string_value(json_object_get(recvd_session_JData, "client_SDP")));
                             rtcdc_parse_offer_sdp(answerer, client_SDP);
                             parse_candidates(answerer, client_candidates);
                             fs_SDP = rtcdc_generate_offer_sdp(answerer);
@@ -324,10 +334,8 @@ static int callback_fileserver(struct libwebsocket_context *context,
                             write_data->type = FS_UPLOAD_READY;
                             strcpy(write_data->data, sent_data_str);
                             libwebsocket_callback_on_writable(context, wsi);
-                            //int lws_err;
-                            //lws_err = libwebsocket_write(write_data->target_wsi, (void *) write_data->data, strlen(write_data->data), LWS_WRITE_TEXT);
-                            /* TODO: free memory */
-                            
+                                                           
+
                             /* assign repo_path into rtcdc_info */
                             strcpy(rtcdc_info.local_repo_path, WAREHOUSE_PATH);
                             strcat(rtcdc_info.local_repo_path, repo_name);
@@ -339,6 +347,13 @@ static int callback_fileserver(struct libwebsocket_context *context,
 #ifdef DEBUG_FS
                             fprintf(stderr, "FILE_SERVER: FS_UPLOAD_READY: waiting rtcdc connection\n");
 #endif
+                             /* TODO: free memory */
+                            free(client_SDP);
+                            free(client_candidates); 
+                            free(repo_name);
+                            free(session_id);
+
+                            
                             /* allocate a uv to run rtcdc_loop */
                             uv_loop_t *main_loop = uv_default_loop();
                             uv_work_t work;
@@ -347,6 +362,94 @@ static int callback_fileserver(struct libwebsocket_context *context,
                             /* TODO: it needs to sleep or segamentation fault. here contains bug */
                             sleep(3);
                             /* TODO: when the rtcdc_loop terminate? */
+                            break;
+                        }
+                    case SY_DOWNLOAD:
+                        {
+#ifdef DEBUG_FS
+                            fprintf(stderr, "FILE_SERVER: receive SY_DOWNLOAD\n");
+#endif
+                            /* get repo_name, and strcat repo_path, get client_SDP and client_candidate */
+                            char *client_SDP, *client_candidates, *repo_name, *session_id;
+                            
+                            json_unpack(recvd_session_JData, "{s:s, s:s, s:s, s:s}", 
+                                        "client_SDP", &client_SDP,
+                                        "client_candidates", &client_candidates,
+                                        "repo_name", &repo_name, "session_id", &session_id);
+                            json_t *diff_array_json = json_object_get((const json_t *)recvd_session_JData, "diff");
+
+                            struct sy_rtcdc_info_t rtcdc_info;
+                            memset(&rtcdc_info, 0, sizeof(struct sy_rtcdc_info_t));
+                            /*construct sy_session_diff */
+                            size_t diff_array_size = json_array_size(diff_array_json);
+                            struct sy_diff_t* sy_session_diff = (struct sy_diff_t *)calloc(1, sizeof(struct sy_diff_t));
+                            sy_session_diff->files_diff = (struct diff_info_t *)calloc(diff_array_size, sizeof(struct sy_diff_t));
+                            sy_session_diff->num = diff_array_size;
+                            size_t index;
+                            char *filename;
+                            int dirty;
+                            json_t *diff_element_json;
+                            json_array_foreach(diff_array_json, index, diff_element_json){
+                                json_unpack(diff_element_json, "{s:s, s:i}", "filename", &filename, "dirty", &dirty);
+                                strcpy((sy_session_diff->files_diff[index]).filename, filename);
+                                (sy_session_diff->files_diff[index]).dirty = dirty;
+                            }
+
+                            /* parse client_SDP and client_candidate*/
+                            char *fs_SDP;
+                            rtcdc_peer_connection * answerer = rtcdc_create_peer_connection((void *)download_fs_on_channel,
+                                                                                            (void *)on_candidate,
+                                                                                            (void *)download_fs_on_connect,
+                                                                                            STUN_IP, 0, (void *)&rtcdc_info);
+                            rtcdc_parse_offer_sdp(answerer, client_SDP);
+                            parse_candidates(answerer, client_candidates);
+                            fs_SDP = rtcdc_generate_offer_sdp(answerer);
+#ifdef DEBUG_FS
+                            fprintf(stderr, "FILE_SERVER: FS_UPLOAD_READY: waiting rtcdc connection\n");
+#endif
+                            json_t *sent_session_JData = json_object();
+                            json_t *json_arr = json_array();
+                            json_object_set_new(sent_session_JData, "metadata_type", json_integer(FS_DOWNLOAD_READY));
+                            json_object_set_new(sent_session_JData, "session_id", json_string(session_id));
+                            json_object_set_new(sent_session_JData, "fs_SDP", json_string(fs_SDP));
+                            json_object_set_new(sent_session_JData, "fs_candidates", json_string(rtcdc_info.local_candidates));
+                            
+                            sent_data_str = json_dumps(sent_session_JData, 0);
+                            
+                            struct lwst_writedata_t *write_data = *write_data_ptr;
+                            write_data->target_wsi = wsi;
+                            write_data->type = FS_DOWNLOAD_READY;
+                            strcpy(write_data->data, sent_data_str);
+                            libwebsocket_callback_on_writable(context, wsi);
+                             
+                           
+                            uv_loop_t *main_loop = uv_default_loop();
+                            
+                            /* assign repo_path into rtcdc_info */
+                            strcpy(rtcdc_info.local_repo_path, WAREHOUSE_PATH);
+                            strcat(rtcdc_info.local_repo_path, repo_name);
+                            strcat(rtcdc_info.local_repo_path, "/");
+                            rtcdc_info.sy_session_diff = sy_session_diff;
+                            rtcdc_info.data_channel = NULL;
+                            rtcdc_info.uv_loop = main_loop;
+                            rtcdc_info.peer = answerer;                
+                            /* send the fs_SDP, fs_candidates */
+                            /* assign repo_path into rtcdc_info */
+                            /* TODO: free memory */
+                            free(client_SDP);
+                            free(client_candidates); 
+                            free(repo_name);
+                            free(session_id);
+                            free(fs_SDP);
+                                                   
+                            /* allocate a uv to run rtcdc_loop */
+                            
+                            uv_work_t work;
+                            work.data = (void *)answerer;
+                            uv_queue_work(main_loop, &work, uv_rtcdc_loop, NULL);
+                            //uv_run(main_loop, UV_RUN_DEFAULT);
+                            /* TODO: when the rtcdc_loop terminate? */
+                            printf("bye download\n");
                             break;
                         }
                     default:
@@ -371,14 +474,12 @@ static struct libwebsocket_protocols fileserver_protocols[] = {
 
 
 int main(int argc, char *argv[]){
-    // initial signaling
     const char *address = "localhost";
     int port = 7681;
     signal_conn = lwst_initial(address, port, fileserver_protocols, "fileserver-protocol", NULL);
     struct libwebsocket_context *context = signal_conn->context;
     fileserver_exit = 0;
     lwst_connect(context, &fileserver_exit);
-    //uv_run(main_loop, UV_RUN_DEFAULT);
     return 0;
 }
 

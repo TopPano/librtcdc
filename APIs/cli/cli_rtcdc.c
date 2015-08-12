@@ -5,7 +5,8 @@
 #include "sy.h"
 
 
-void uv_upload(uv_work_t *work)
+/* upload_client part */
+void uv_client_upload(uv_work_t *work)
 {
     struct sy_rtcdc_info_t *rtcdc_info = (struct sy_rtcdc_info_t *)work->data;
     struct rtcdc_data_channel *data_channel = rtcdc_info->data_channel; 
@@ -66,7 +67,7 @@ void upload_client_on_message(struct rtcdc_data_channel *channel,
                               int datatype, void *data, 
                               size_t len, void *user_data)
 {
-    printf("receive from fs\n");
+//    printf("receive from fs\n");
 }
 
 
@@ -85,7 +86,7 @@ void upload_client_on_open(struct rtcdc_data_channel *channel, void *user_data)
 
     uv_work_t upload_work;
     upload_work.data = (void *)rtcdc_info;
-    uv_queue_work(uv_loop, &upload_work, uv_upload, NULL);
+    uv_queue_work(uv_loop, &upload_work, uv_client_upload, NULL);
 }
 
 
@@ -113,5 +114,82 @@ void upload_client_on_connect(struct rtcdc_peer_connection *peer
     if(upload_dc == NULL)
         fprintf(stderr, "signaling_rtcdc: fail create data channel\n");
 }
+
+
+
+/* download_client part */
+
+void download_client_on_message(struct rtcdc_data_channel *channel,
+                              int datatype, void *data, 
+                              size_t len, void *user_data)
+{
+    char *local_repo_path = (char *)user_data;
+    struct sctp_packet_t *recvd_packet = (struct sctp_packet_t *)data;
+
+    static FILE *pFILE;
+    if(recvd_packet->index == 0)
+    {
+        char local_file_path[LOCAL_PATH_SIZE];
+        memset(local_file_path, 0, LOCAL_PATH_SIZE);
+        strcpy(local_file_path, local_repo_path);
+        strcat(local_file_path, recvd_packet->buf);
+        pFILE = fopen(local_file_path, "w");
+        printf("filename:%s\n", local_file_path);
+    }
+    else if(recvd_packet->index == -1)
+    {
+        /*receive last buf*/
+        printf("fininsh!!!!!!!!:%d\n", len);
+        fclose(pFILE);
+    }
+    else if(recvd_packet->index > 0)
+    {
+        /*receive buf*/
+        fwrite(recvd_packet->buf, sizeof(char), recvd_packet->buf_len, pFILE);
+    }
+ 
+}
+
+
+void download_client_on_open(struct rtcdc_data_channel *channel, void *user_data)
+{
+#ifdef DEBUG_RTCDC
+    fprintf(stderr, "signaling_rtcdc: download client on_open\n");
+#endif
+}
+
+
+void download_client_on_channel(struct rtcdc_peer_connection *peer,
+                struct rtcdc_data_channel *dc,
+                void *user_data)
+{
+    dc->on_message = download_client_on_message;
+#ifdef DEBUG_RTCDC
+    fprintf(stderr, "signaling_rtcdc: download client on_channel\n");
+#endif
+    /* TODO: here is weird, u can observe the pointer addr of user_data, channel->user_data and channel 
+     * the channel ptr addr is same with on_message's, but different with on_connect and on_open*/
+    struct sy_rtcdc_info_t *rtcdc_info = (struct sy_rtcdc_info_t *)user_data;
+    char *local_repo_path = rtcdc_info->local_repo_path;
+    dc->user_data = (void *)local_repo_path;
+
+}
+
+
+void download_client_on_connect(struct rtcdc_peer_connection *peer
+                        ,void *user_data)
+{
+#ifdef DEBUG_RTCDC
+    fprintf(stderr, "signaling_rtcdc: download client on_connect\n");
+#endif
+/*    
+ *  struct rtcdc_data_channel *download_dc = rtcdc_create_data_channel(peer, "Download Channel",
+                                                                    "", download_client_on_open,
+                                                                    NULL, NULL, user_data);
+    if(download_dc == NULL)
+        fprintf(stderr, "signaling_rtcdc: fail create data channel\n");
+*/
+}
+
 
 
