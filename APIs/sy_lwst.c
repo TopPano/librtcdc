@@ -43,7 +43,7 @@ struct lwst_conn_t* lwst_initial(const char *address,
         lwsl_err("libwebsocket_create_context failed\n");
         goto bail;
     }
-
+    printf("hi%p\n", context);
     SDP_conn->context = context;
 
     wsi = libwebsocket_client_connect_extended(context, address, port, use_ssl, "/", 
@@ -85,5 +85,6 @@ void lwst_connect(struct libwebsocket_context *context, volatile int *exit)
     while( n >= 0 && !(*exit)){
         n = libwebsocket_service(context, 20);
     }
+    
     fprintf(stderr, "SIGNALING: close connect\n\n");
 }
