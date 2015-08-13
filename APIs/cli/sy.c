@@ -145,6 +145,11 @@ static int callback_client(struct libwebsocket_context *context,
                         recvd_lws_JData = recvd_session_JData;
                         return -1;
                         break;
+                    case SY_CLEANUP_OK:
+                        fprintf(stderr,"SYCLIENT: receive SY_CLEANUP_OK\n");
+                        recvd_lws_JData = recvd_session_JData;
+                        return -1;
+                        break;
                     default:
                         break;
                 }
@@ -613,6 +618,72 @@ uint8_t sy_download(struct sy_session_t *sy_session, struct sy_diff_t *sy_sessio
 }
 
 
+uint8_t sy_cleanup(struct sy_session_t *sy_session, struct sy_diff_t *sy_session_diff)
+{
+    /* connect to metadata server*/
+    const char *metadata_server_IP = METADATA_SERVER_IP;
+    uint16_t metadata_server_port = 7681;
+    uint8_t metadata_type;
+    struct lwst_conn_t *metadata_conn;
+    metadata_conn = lwst_initial(metadata_server_IP, metadata_server_port, client_protocols, "client-protocol", NULL);
+    struct libwebsocket_context *context = metadata_conn->context;
+    struct libwebsocket *wsi = metadata_conn->wsi;
+    volatile uint8_t client_exit = 0;
+    metadata_conn->exit = &client_exit;
+
+    /* allocate a uv to run lwst_uv_connect() */
+    main_loop = uv_default_loop();
+    uv_work_t work;
+    work.data = (void *)metadata_conn;
+    uv_queue_work(main_loop, &work, lwst_uv_connect, NULL);
+    
+    /* send request to metadata server: cleanup the session */
+    /* write SY_CLEANUP and session_id */
+    sent_lws_JData = json_object();
+    json_object_set_new(sent_lws_JData, "metadata_type", json_integer(SY_CLEANUP));
+    json_object_set_new(sent_lws_JData, "session_id", json_string(sy_session->session_id));
+    recvd_lws_JData = NULL;
+
+    usleep(100000);
+    libwebsocket_callback_on_writable(context, wsi);
+
+    /* wait for SY_CLEANUP_OK */
+    /* TODO: here needs mutex */
+    json_t *sy_cleanup_json;
+    while(1){
+        if(recvd_lws_JData != NULL){
+            json_unpack(recvd_lws_JData, "{s:i}", "metadata_type", &metadata_type);
+            if(metadata_type == SY_CLEANUP_OK){
+                /* TODO:sy_init success, keep or close the libwebsocket connection?*/
+                client_exit = 1;
+                break;
+            }
+        }
+        usleep(1000);
+    }
+    /* close the libwebsocket connection */
+    json_decref(recvd_lws_JData);
+    recvd_lws_JData = NULL;
+    uv_run(main_loop, UV_RUN_DEFAULT);
+    /* free memory: sy_session and sy_session_diff */
+    
+    free(sy_session->session_id);
+    free(sy_session->URI_code);
+   
+    free(sy_session->wsi);
+    //libwebsocket_context_destroy(sy_session->context);
+    free(sy_session->local_repo_path);
+    free(sy_session);
+    sy_session = NULL;
+
+    free(sy_session_diff->files_diff);
+    free(sy_session_diff);
+    sy_session_diff = NULL;
+
+    return SY_CLEANUP_OK;
+}
+
+
 int main(int argc, char *argv[]){
 
     struct sy_session_t *sy_session = sy_default_session();
@@ -623,8 +694,8 @@ int main(int argc, char *argv[]){
         fprintf(stderr, "sy_init finish\nsession_id:%s, URI_code:%s\n", sy_session->session_id, sy_session->URI_code);
     else
         fprintf(stderr, "sy_init failed\n");
-    printf("\n");
-/* sy_connect()
+
+    /* sy_connect()
     char local_repo_path[128];
     strcpy(local_repo_path, LOCAL_REPO_PATH);
     char *URI_code = "55c82a205ad78936c67cc0f7";
@@ -634,7 +705,7 @@ int main(int argc, char *argv[]){
     else
         fprintf(stderr, "sy_connect failed");
     fgetc(stdin);
-*/
+    */
 
     struct sy_diff_t *sy_session_diff = sy_default_diff();
     sy_status(sy_session, sy_session_diff);
@@ -645,9 +716,9 @@ int main(int argc, char *argv[]){
         printf("filename:%s, dirty:%d\n", (sy_session_diff->files_diff[i]).filename, (sy_session_diff->files_diff[i]).dirty);
     }
     printf("\n");
-
-
-    sy_download(sy_session, sy_session_diff);
+    fgetc(stdin);
+    // sy_download(sy_session, sy_session_diff);
+    sy_cleanup(sy_session, sy_session_diff);
     return 0;
 }
 

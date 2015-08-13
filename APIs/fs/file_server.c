@@ -383,7 +383,7 @@ static int callback_fileserver(struct libwebsocket_context *context,
                             /*construct sy_session_diff */
                             size_t diff_array_size = json_array_size(diff_array_json);
                             struct sy_diff_t* sy_session_diff = (struct sy_diff_t *)calloc(1, sizeof(struct sy_diff_t));
-                            sy_session_diff->files_diff = (struct diff_info_t *)calloc(diff_array_size, sizeof(struct sy_diff_t));
+                            sy_session_diff->files_diff = (struct diff_info_t *)calloc(diff_array_size, sizeof(struct diff_info_t));
                             sy_session_diff->num = diff_array_size;
                             size_t index;
                             char *filename;
@@ -392,7 +392,7 @@ static int callback_fileserver(struct libwebsocket_context *context,
                             json_array_foreach(diff_array_json, index, diff_element_json){
                                 json_unpack(diff_element_json, "{s:s, s:i}", "filename", &filename, "dirty", &dirty);
                                 strcpy((sy_session_diff->files_diff[index]).filename, filename);
-                                (sy_session_diff->files_diff[index]).dirty = dirty;
+                                ((sy_session_diff->files_diff[index])).dirty = dirty;
                             }
 
                             /* parse client_SDP and client_candidate*/

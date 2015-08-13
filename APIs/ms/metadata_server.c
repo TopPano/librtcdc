@@ -32,6 +32,18 @@ void delete_fileserver(struct libwebsocket *fileserver_wsi)
 }
 
 
+void delete_session(char *session_id)
+{
+    bson_t *doc = bson_new();
+    bson_error_t error;
+    BSON_APPEND_UTF8 (doc, "session_id", session_id);
+
+    if (!mongoc_collection_remove (session_coll, MONGOC_DELETE_SINGLE_REMOVE, doc, NULL, &error)){
+        printf ("%s\n", error.message);
+    }
+    bson_destroy(doc);
+}
+
 uint8_t insert_fileserver(char *fileserver_name, struct libwebsocket *fileserver_wsi)
 {
     bson_t *doc = bson_new();
@@ -853,6 +865,9 @@ static int callback_SDP(struct libwebsocket_context *context,
                             json_decref(recvd_session_JData);   
                             json_decref(sent_session_JData);
                             free(sent_data_str);
+                            recvd_session_JData = NULL;
+                            sent_session_JData = NULL;
+                            sent_data_str = NULL;
                             break;
                         }
                     case FS_DOWNLOAD_READY:
@@ -873,6 +888,36 @@ static int callback_SDP(struct libwebsocket_context *context,
                             json_decref(recvd_session_JData);   
                             recvd_session_JData=NULL;
 
+                            break;
+                        }
+                    case SY_CLEANUP:
+                        {
+                            fprintf(stderr, "METADATA_SERVER: receive SY_CLEANUP\n");
+                            char *session_id;
+                            json_unpack(recvd_session_JData, "{s:s}", 
+                                        "session_id", &session_id);
+
+                            /* remove the session in mongodb */
+                            delete_session(session_id); 
+
+                            /* send SY_CLEANUP_OK back */
+                            json_t *sent_session_JData = json_object(); 
+                            json_object_set_new(sent_session_JData, "metadata_type", json_integer(SY_CLEANUP_OK));
+                         
+                            char *sent_data_str = json_dumps(sent_session_JData, 0);
+                            struct lwst_writedata_t *write_data = *write_data_ptr;
+                            strcpy(write_data->data, sent_data_str);
+                            write_data->target_wsi = wsi;
+                            write_data->type = SY_CLEANUP_OK;
+                           
+                            libwebsocket_callback_on_writable(context, wsi);
+                            /* free memory */
+                            json_decref(recvd_session_JData);   
+                            json_decref(sent_session_JData);
+                            free(sent_data_str);
+                            recvd_session_JData = NULL;
+                            sent_session_JData = NULL;
+                            sent_data_str = NULL;
                             break;
                         }
                     default:
@@ -986,13 +1031,22 @@ static int callback_SDP(struct libwebsocket_context *context,
                             {
 #ifdef DEBUG_META
                                 if(lws_err<0)
-                                    fprintf(stderr, "METADATA_SERVER: send FS_DOWNLOAD_READY to fileserver fail\n");
+                                    fprintf(stderr, "METADATA_SERVER: send FS_DOWNLOAD_READY to client fail\n");
                                 else
-                                    fprintf(stderr, "METADATA_SERVER: send FS_DOWNLOAD_READY to fileserver\n");
+                                    fprintf(stderr, "METADATA_SERVER: send FS_DOWNLOAD_READY to client\n");
 #endif
                                 break;
                             }
-
+                        case(SY_CLEANUP_OK):
+                            {
+#ifdef DEBUG_META
+                                if(lws_err<0)
+                                    fprintf(stderr, "METADATA_SERVER: send SY_CLEANUP_OK to client fail\n");
+                                else
+                                    fprintf(stderr, "METADATA_SERVER: send SY_CLEANUP_OK to client\n");
+#endif
+                                break;
+                            }
                         default:
                             break;
                     }

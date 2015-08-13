@@ -50,6 +50,8 @@ typedef enum {
     SY_UPLOAD_OK,
     SY_DOWNLOAD,
     SY_DOWNLOAD_OK,
+    SY_CLEANUP,
+    SY_CLEANUP_OK,
     SY_SESSION_NOT_EXIST,
 } METADATAtype;
 
