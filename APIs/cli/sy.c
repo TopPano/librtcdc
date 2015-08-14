@@ -63,6 +63,7 @@ char *gen_md5(char *filename)
         strcat(result, tmp);
     }
     free(hash);
+    hash = NULL;
     return result;
 }
 
@@ -89,17 +90,58 @@ static int callback_client(struct libwebsocket_context *context,
 
         case LWS_CALLBACK_CLIENT_WRITEABLE:
             {
-                if(write_data->type == SY_INIT)
-                {
-                    int lws_err = libwebsocket_write(write_data->target_wsi, (void *)write_data->data, strlen(write_data->data), LWS_WRITE_TEXT);
+                switch(write_data->type){
+                    case(SY_INIT):
+                        {
+                            int lws_err = libwebsocket_write(write_data->target_wsi, (void *)write_data->data, strlen(write_data->data), LWS_WRITE_TEXT);
 #ifdef DEBUG_SY            
-                    if(lws_err < 0)
-                        fprintf(stderr, "SYCLIENT: send SY_INIT to metadata_server fail\n");
-                    else
-                        fprintf(stderr, "SYCLIENT: send SY_INIT to metadata_server\n");
+                            if(lws_err < 0)
+                                fprintf(stderr, "SYCLIENT: send SY_INIT to metadata_server fail\n");
+                            else
+                                fprintf(stderr, "SYCLIENT: send SY_INIT to metadata_server\n");
 #endif
+                            break;
+                        }
+                    case(SY_CONNECT):
+                        {
+                            int lws_err = libwebsocket_write(write_data->target_wsi, (void *)write_data->data, strlen(write_data->data), LWS_WRITE_TEXT);
+#ifdef DEBUG_SY            
+                            if(lws_err < 0)
+                                fprintf(stderr, "SYCLIENT: send SY_CONNECT to metadata_server fail\n");
+                            else
+                                fprintf(stderr, "SYCLIENT: send SY_CONNECT to metadata_server\n");
+#endif
+                            break;
+                        }
+
+                    case(SY_STATUS):
+                        {
+                            int lws_err = libwebsocket_write(write_data->target_wsi, (void *)write_data->data, strlen(write_data->data), LWS_WRITE_TEXT);
+#ifdef DEBUG_SY            
+                            if(lws_err < 0)
+                                fprintf(stderr, "SYCLIENT: send SY_STATUS to metadata_server fail\n");
+                            else
+                                fprintf(stderr, "SYCLIENT: send SY_STATUS to metadata_server\n");
+#endif
+                            break;
+                        }
+                    case(SY_CLEANUP):
+                        {
+                            int lws_err = libwebsocket_write(write_data->target_wsi, (void *)write_data->data, strlen(write_data->data), LWS_WRITE_TEXT);
+#ifdef DEBUG_SY            
+                            if(lws_err < 0)
+                                fprintf(stderr, "SYCLIENT: send SY_CLEANUP to metadata_server fail\n");
+                            else
+                                fprintf(stderr, "SYCLIENT: send SY_CLEANUP to metadata_server\n");
+#endif
+                            break;
+                        }
+
+                    default:
+                        break;
                 }
-                else if(sent_lws_JData != NULL){
+               
+                if(sent_lws_JData != NULL){
                     char *session_SData = json_dumps(sent_lws_JData, 0);
                     int lws_err = libwebsocket_write(wsi, (void *)session_SData, strlen(session_SData), LWS_WRITE_TEXT);
 #ifdef DEBUG_SY            
@@ -139,12 +181,26 @@ static int callback_client(struct libwebsocket_context *context,
                         break;
                     case SY_CONNECT_OK:
                         fprintf(stderr,"SYCLIENT: receive SY_CONNECT_OK\n");
-                        recvd_lws_JData = recvd_session_JData;
+                        /*TODO: the naming of "write_data" is not good in receive part*/
+                        /*TODO: need mutex? */
+                        memset(write_data->data, 0, WRITE_DATA_SIZE);
+                        strcpy(write_data->data, session_SData);
+                        write_data->target_wsi = NULL;
+                        write_data->type = SY_CONNECT_OK;
+                        json_decref(recvd_session_JData);
+                        recvd_session_JData = NULL;
                         return -1;
                         break;
                     case SY_STATUS_OK:
                         fprintf(stderr,"SYCLIENT: receive SY_STATUS_OK\n");
-                        recvd_lws_JData = recvd_session_JData;
+                        /*TODO: the naming of "write_data" is not good in receive part*/
+                        /*TODO: need mutex? */
+                        memset(write_data->data, 0, WRITE_DATA_SIZE);
+                        strcpy(write_data->data, session_SData);
+                        write_data->target_wsi = NULL;
+                        write_data->type = SY_STATUS_OK;
+                        json_decref(recvd_session_JData);
+                        recvd_session_JData = NULL;
                         return -1;
                         break;
                     case FS_UPLOAD_READY:
@@ -159,7 +215,14 @@ static int callback_client(struct libwebsocket_context *context,
                         break;
                     case SY_CLEANUP_OK:
                         fprintf(stderr,"SYCLIENT: receive SY_CLEANUP_OK\n");
-                        recvd_lws_JData = recvd_session_JData;
+                        /*TODO: the naming of "write_data" is not good in receive part*/
+                        /*TODO: need mutex? */
+                        memset(write_data->data, 0, WRITE_DATA_SIZE);
+                        strcpy(write_data->data, session_SData);
+                        write_data->target_wsi = NULL;
+                        write_data->type = SY_CLEANUP_OK;
+                        json_decref(recvd_session_JData);
+                        recvd_session_JData = NULL;
                         return -1;
                         break;
                     default:
@@ -233,7 +296,6 @@ uint8_t sy_init(struct sy_session_t *sy_session, char *repo_name, char *local_re
     /* wait for receiving SY_INIT_OK */
     /* TODO: here needs mutex */
 
-
     while(1){
         if(write_data->type == SY_INIT_OK){
             /* TODO:sy_init success, keep or close the libwebsocket connection?*/
@@ -270,8 +332,6 @@ uint8_t sy_init(struct sy_session_t *sy_session, char *repo_name, char *local_re
     
     json_decref(recvd_json);
     json_decref(sent_json); 
-    recvd_json = NULL;
-    sent_json = NULL;
     free(metadata_conn);
     /* return METADATAtype */
     return SY_INIT_OK;
@@ -286,25 +346,30 @@ uint8_t sy_connect(struct sy_session_t *sy_session, char *URI_code, char *local_
     uint8_t metadata_type;
     char *session_id;
     struct lwst_conn_t *metadata_conn;
-
-    metadata_conn = lwst_initial(metadata_server_IP, metadata_server_port, client_protocols, "client-protocol", NULL);
+    struct lwst_writedata_t *write_data = (struct lwst_writedata_t *)calloc(1, sizeof(struct lwst_writedata_t));
+    metadata_conn = lwst_initial(metadata_server_IP, metadata_server_port, client_protocols, "client-protocol", (void *)write_data);
 
     struct libwebsocket_context *context = metadata_conn->context;
     struct libwebsocket *wsi = metadata_conn->wsi;
     volatile uint8_t client_exit = 0;
     metadata_conn->exit = &client_exit;
+
     /* allocate a uv to run lwst_uv_connect() */
     main_loop = uv_default_loop();
     uv_work_t work;
     work.data = (void *)metadata_conn;
     uv_queue_work(main_loop, &work, lwst_uv_connect, NULL);
-    sent_lws_JData = json_object();
-    json_object_set_new(sent_lws_JData, "metadata_type", json_integer(SY_CONNECT));
-    json_object_set_new(sent_lws_JData, "URI_code", json_string(URI_code));
-    json_object_set_new(sent_lws_JData, "api_key", json_string(api_key));
-    json_object_set_new(sent_lws_JData, "token", json_string(token));
+    
+    json_t *sent_json = json_object();
+    json_object_set_new(sent_json, "metadata_type", json_integer(SY_CONNECT));
+    json_object_set_new(sent_json, "URI_code", json_string(URI_code));
+    json_object_set_new(sent_json, "api_key", json_string(api_key));
+    json_object_set_new(sent_json, "token", json_string(token));
 
-    recvd_lws_JData = NULL;
+    char *sent_str = json_dumps(sent_json, 0);
+    strcpy(write_data->data, sent_str);
+    write_data->target_wsi = wsi;
+    write_data->type = SY_CONNECT;
 
     usleep(100000);
     libwebsocket_callback_on_writable(context, wsi);
@@ -312,42 +377,36 @@ uint8_t sy_connect(struct sy_session_t *sy_session, char *URI_code, char *local_
     /* wait for receiving SY_CONNECT_OK */
     /* TODO:here needs mutex */
     while(1){
-        if(recvd_lws_JData != NULL){
-            json_unpack(recvd_lws_JData, "{s:i}", "metadata_type", &metadata_type);
-            if(metadata_type == SY_CONNECT_OK){
-                /* TODO:sy_connect success, keep or close the libwebsocket connection?*/
-                client_exit = 1;
-                break;
-            }
+        if(write_data->type == SY_CONNECT_OK){
+            /* TODO:sy_connect success, keep or close the libwebsocket connection?*/
+            client_exit = 1;
+            break;
         }
         usleep(1000);
     }
+    uv_run(main_loop, UV_RUN_DEFAULT);
+    
     /* extract the URI_code & session_id and assign to sy_session */
+    json_t *recvd_json = json_loads((const char *)write_data->data ,JSON_DECODE_ANY, NULL);
+    json_unpack(recvd_json, "{s:s}", "session_id", &(session_id));
+    json_unpack(recvd_json, "{s:s}", "URI_code", &(URI_code));
 
-    /* construct sy_session */
-    /* TODO: not sure if preserving the wsi and context is necessary? */
-    sy_session->wsi = wsi;
-    sy_session->context = context;
-
-    /* TODO: is the repo_name necessary? */
-    //strcpy(sy_session->repo_name, repo_name);
-
-    json_unpack(recvd_lws_JData, "{s:s}", "session_id", &(session_id));
-    json_unpack(recvd_lws_JData, "{s:s}", "URI_code", &(URI_code));
-
-    sy_session->session_id = (char *)calloc(1, strlen(session_id));
-    sy_session->URI_code = (char *)calloc(1, strlen(URI_code));
-    sy_session->local_repo_path = (char *)calloc(1, strlen(local_repo_path));
+    sy_session->session_id = (char *)calloc(1, strlen(session_id)+1);
+    sy_session->URI_code = (char *)calloc(1, strlen(URI_code)+1);
+    sy_session->local_repo_path = (char *)calloc(1, strlen(local_repo_path)+1);
     strcpy(sy_session->session_id, session_id);
     strcpy(sy_session->URI_code, URI_code);
     strcpy(sy_session->local_repo_path, local_repo_path);
 
     /* free memory */
-    free(recvd_lws_JData);
-    free(sent_lws_JData); 
-    recvd_lws_JData = NULL;
-    sent_lws_JData = NULL;
-    uv_run(main_loop, UV_RUN_DEFAULT);
+    free(sent_str);
+    sent_str = NULL;
+    libwebsocket_context_destroy(context);
+    free(write_data);
+    write_data = NULL;
+
+    json_decref(recvd_json);
+    json_decref(sent_json); 
 
     free(metadata_conn);
     /* return METADATAtype */
@@ -360,9 +419,9 @@ uint8_t sy_status(struct sy_session_t *sy_session, struct sy_diff_t *sy_session_
     const char *metadata_server_IP = METADATA_SERVER_IP;
     uint16_t metadata_server_port = 7681;
     uint8_t metadata_type;
-    char *session_id, *URI_code;
     struct lwst_conn_t *metadata_conn;
-    metadata_conn = lwst_initial(metadata_server_IP, metadata_server_port, client_protocols, "client-protocol", NULL);
+    struct lwst_writedata_t *write_data = (struct lwst_writedata_t *)calloc(1, sizeof(struct lwst_writedata_t));
+    metadata_conn = lwst_initial(metadata_server_IP, metadata_server_port, client_protocols, "client-protocol", (void *)write_data);
     struct libwebsocket_context *context = metadata_conn->context;
     struct libwebsocket *wsi = metadata_conn->wsi;
     volatile uint8_t client_exit = 0;
@@ -373,11 +432,14 @@ uint8_t sy_status(struct sy_session_t *sy_session, struct sy_diff_t *sy_session_
     uv_work_t work;
     work.data = (void *)metadata_conn;
     uv_queue_work(main_loop, &work, lwst_uv_connect, NULL);
-    sent_lws_JData = json_object();
-    json_t *sent_file_array_json = json_array();
-    json_object_set_new(sent_lws_JData, "metadata_type", json_integer(SY_STATUS));
-    json_object_set_new(sent_lws_JData, "session_id", json_string(sy_session->session_id));
-    json_object_set_new(sent_lws_JData, "files", sent_file_array_json);
+
+    /* construct sent_json and calculate md5 of each files */
+    json_t *sent_json, *sent_file_array_json;
+    sent_json = json_object();
+    sent_file_array_json = json_array();
+    json_object_set_new(sent_json, "metadata_type", json_integer(SY_STATUS));
+    json_object_set_new(sent_json, "session_id", json_string(sy_session->session_id));
+    json_object_set_new(sent_json, "files", sent_file_array_json);
 
     /* read all files in local_repo_path*/
     DIR *dp;
@@ -401,6 +463,7 @@ uint8_t sy_status(struct sy_session_t *sy_session, struct sy_diff_t *sy_session_
                 json_array_append(sent_file_array_json, file_json);
                 json_decref(file_json);
                 free(file_md5);
+                file_md5 = NULL;
             }
         }
         (void) closedir (dp);
@@ -409,55 +472,63 @@ uint8_t sy_status(struct sy_session_t *sy_session, struct sy_diff_t *sy_session_
         perror ("Couldn't open the directory");
 
     /* send the json object throw libwebsocket */
-    recvd_lws_JData = NULL;
+    char *sent_str = json_dumps(sent_json, 0);
+    strcpy(write_data->data, sent_str);
+    write_data->target_wsi = wsi;
+    write_data->type = SY_STATUS;
 
     usleep(100000);
     libwebsocket_callback_on_writable(context, wsi);
 
-    json_t *sy_status_json; 
     /* wait for message */
     /* TODO:here needs mutex */
     while(1){
-        if(recvd_lws_JData != NULL){
-            json_unpack(recvd_lws_JData, "{s:i}", "metadata_type", &metadata_type);
-            if(metadata_type == SY_STATUS_OK){
-                sy_status_json = json_deep_copy(recvd_lws_JData);
-                json_decref(sent_lws_JData);
-                /* TODO:sy_status success, keep or close the libwebsocket connection?*/
-                client_exit = 1;
-                break;
-            }
+        if(write_data->type == SY_STATUS_OK){
+            /* TODO:sy_status success, keep or close the libwebsocket connection?*/
+            client_exit = 1;
+            break;
         }
         usleep(1000);
     }
 
+    uv_run(main_loop, UV_RUN_DEFAULT);
     /* construct DIFF structure and return */
-    json_t *recvd_file_array_json = json_object_get(sy_status_json, "files");
-    json_t *recvd_file_element_json;
+    json_t *recvd_json, *recvd_file_array_json, *recvd_file_element_json;
+    struct diff_info_t *files_diff; 
+    
+    recvd_json = json_loads((const char *)write_data->data, JSON_DECODE_ANY, NULL); 
+    recvd_file_array_json = json_object_get(recvd_json, "files");
+    recvd_file_element_json;
     size_t file_array_size = json_array_size(recvd_file_array_json);
     size_t file_array_index;
     int dirty;
     char *filename;
-    struct diff_info_t *files_diff = (struct diff_info_t *)calloc(file_array_size+1, sizeof(struct diff_info_t)); 
+    files_diff = (struct diff_info_t *)calloc(file_array_size+1, sizeof(struct diff_info_t)); 
     json_array_foreach(recvd_file_array_json, file_array_index, recvd_file_element_json)
     {
         json_unpack(recvd_file_element_json, "{s:s, s:i}", "filename", &filename, "dirty", &dirty);
         strcpy(files_diff[file_array_index].filename, filename); 
         files_diff[file_array_index].dirty = dirty;
     }
-
     sy_session_diff->files_diff = files_diff;
     sy_session_diff->num = file_array_size;
 
-    uv_run(main_loop, UV_RUN_DEFAULT);
     /* free memory */
-    usleep(1000);
-    free(sent_file_array_json);
-    free(recvd_file_array_json);
-    free(sy_status_json);
+    free(sent_str);
+    sent_str = NULL;
+    libwebsocket_context_destroy(context);
+    free(write_data);
+    write_data = NULL;
+
+    json_decref(sent_file_array_json);
+    /* recvd_file_element_json is a pointer to a part of recvd_file_array_json */
+    //json_decref(recvd_file_element_json);
+    json_decref(recvd_file_array_json);
+    json_decref(recvd_json);
+    json_decref(sent_json);
 
     free(metadata_conn);
-    free(sent_lws_JData);
+    metadata_conn = NULL;
     /* return METADATAtype */
     return SY_STATUS_OK;
 }
@@ -639,17 +710,18 @@ uint8_t sy_download(struct sy_session_t *sy_session, struct sy_diff_t *sy_sessio
 
 uint8_t sy_cleanup(struct sy_session_t *sy_session, struct sy_diff_t *sy_session_diff)
 {
-    
     /* connect to metadata server*/
     const char *metadata_server_IP = METADATA_SERVER_IP;
     uint16_t metadata_server_port = 7681;
     uint8_t metadata_type;
     struct lwst_conn_t *metadata_conn;
-    metadata_conn = lwst_initial(metadata_server_IP, metadata_server_port, client_protocols, "client-protocol", NULL);
+    struct lwst_writedata_t *write_data = (struct lwst_writedata_t *)calloc(1, sizeof(struct lwst_writedata_t));
+    metadata_conn = lwst_initial(metadata_server_IP, metadata_server_port, client_protocols, "client-protocol", (void *)write_data);
     struct libwebsocket_context *context = metadata_conn->context;
     struct libwebsocket *wsi = metadata_conn->wsi;
     volatile uint8_t client_exit = 0;
     metadata_conn->exit = &client_exit;
+
     /* allocate a uv to run lwst_uv_connect() */
     main_loop = uv_default_loop();
     uv_work_t work;
@@ -658,41 +730,37 @@ uint8_t sy_cleanup(struct sy_session_t *sy_session, struct sy_diff_t *sy_session
     
     /* send request to metadata server: cleanup the session */
     /* write SY_CLEANUP and session_id */
-    sent_lws_JData = json_object();
-    json_object_set_new(sent_lws_JData, "metadata_type", json_integer(SY_CLEANUP));
-    json_object_set_new(sent_lws_JData, "session_id", json_string(sy_session->session_id));
-    recvd_lws_JData = NULL;
+    json_t *sent_json = json_object();
+    json_object_set_new(sent_json, "metadata_type", json_integer(SY_CLEANUP));
+    json_object_set_new(sent_json, "session_id", json_string(sy_session->session_id));
+
+    char *sent_str = json_dumps(sent_json, 0);
+    strcpy(write_data->data, sent_str);
+    write_data->target_wsi = wsi;
+    write_data->type = SY_CLEANUP;
 
     usleep(100000);
     libwebsocket_callback_on_writable(context, wsi);
 
     /* wait for SY_CLEANUP_OK */
     /* TODO: here needs mutex */
-    json_t *sy_cleanup_json;
     while(1){
-        if(recvd_lws_JData != NULL){
-            json_unpack(recvd_lws_JData, "{s:i}", "metadata_type", &metadata_type);
-            if(metadata_type == SY_CLEANUP_OK){
-                /* TODO:sy_init success, keep or close the libwebsocket connection?*/
-                client_exit = 1;
-                break;
-            }
+        if(write_data->type == SY_CLEANUP_OK){
+            /* TODO:sy_init success, keep or close the libwebsocket connection?*/
+            client_exit = 1;
+            break;
         }
         usleep(1000);
     }
-    /* close the libwebsocket connection */
-    json_decref(sent_lws_JData);
-    sent_lws_JData = NULL;
-    json_decref(recvd_lws_JData);
-    recvd_lws_JData = NULL;
+    
     uv_run(main_loop, UV_RUN_DEFAULT);
+    
     /* free memory: sy_session and sy_session_diff */
-   
     if(sy_session != NULL)
     {
         free(sy_session->session_id);
         free(sy_session->URI_code);
-        free(sy_session->wsi);
+        //free(sy_session->wsi);
         //libwebsocket_context_destroy(sy_session->context);
         free(sy_session->local_repo_path);
         free(sy_session);
@@ -705,6 +773,18 @@ uint8_t sy_cleanup(struct sy_session_t *sy_session, struct sy_diff_t *sy_session
         free(sy_session_diff);
         sy_session_diff = NULL;
     }
+
+    /* free memory */
+    free(sent_str);
+    sent_str = NULL;
+    free(write_data);
+    write_data = NULL;
+    libwebsocket_context_destroy(context);
+    
+    json_decref(sent_json);
+    sent_json = NULL;
+    free(metadata_conn);
+    metadata_conn = NULL;
     return SY_CLEANUP_OK;
 }
 
@@ -720,18 +800,18 @@ int main(int argc, char *argv[]){
     else
         fprintf(stderr, "sy_init failed\n");
 
-    /* sy_connect()
-    char local_repo_path[128];
-    strcpy(local_repo_path, LOCAL_REPO_PATH);
-    char *URI_code = "55c82a205ad78936c67cc0f7";
+    char *URI_code = strdup(sy_session->URI_code);
+    sy_cleanup(sy_session, NULL);
+    
+
+    sy_session = sy_default_session();
     if(sy_connect(sy_session, URI_code, local_repo_path, "apikey", "token") == SY_CONNECT_OK)
         fprintf(stderr, "sy_connect finish\nsession_id:%s, URI_code:%s local_repo_path: %s\n", 
                         sy_session->session_id, sy_session->URI_code, sy_session->local_repo_path);
     else
         fprintf(stderr, "sy_connect failed");
-    fgetc(stdin);
-    */
-/*
+    
+    
     struct sy_diff_t *sy_session_diff = sy_default_diff();
     sy_status(sy_session, sy_session_diff);
 
@@ -741,19 +821,11 @@ int main(int argc, char *argv[]){
         printf("filename:%s, dirty:%d\n", (sy_session_diff->files_diff[i]).filename, (sy_session_diff->files_diff[i]).dirty);
     }
     printf("\n");
-   
-    //sy_cleanup(sy_session, sy_session_diff);
-  */ 
- 
-/*
-        free(sy_session->session_id);
-        free(sy_session->URI_code);
-        free(sy_session->wsi);
-        //libwebsocket_context_destroy(sy_session->context);
-        free(sy_session->local_repo_path);
-        free(sy_session);
-        sy_session = NULL;
-  */ 
+
+    sy_cleanup(sy_session, sy_session_diff);
+    
+    free(URI_code);
+    URI_code = NULL;
     return 0;
 }
 
