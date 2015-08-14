@@ -24,8 +24,6 @@ typedef struct rtcdc_peer_connection rtcdc_peer_connection;
 typedef struct rtcdc_data_channel rtcdc_data_channel;
 static uv_loop_t *main_loop;
 /* this design may be a problem */
-static json_t *sent_lws_JData, *recvd_lws_JData;
-
 static struct libwebsocket_protocols client_protocols[];
 
 char *gen_md5(char *filename)
@@ -113,7 +111,6 @@ static int callback_client(struct libwebsocket_context *context,
 #endif
                             break;
                         }
-
                     case(SY_STATUS):
                         {
                             int lws_err = libwebsocket_write(write_data->target_wsi, (void *)write_data->data, strlen(write_data->data), LWS_WRITE_TEXT);
@@ -122,6 +119,28 @@ static int callback_client(struct libwebsocket_context *context,
                                 fprintf(stderr, "SYCLIENT: send SY_STATUS to metadata_server fail\n");
                             else
                                 fprintf(stderr, "SYCLIENT: send SY_STATUS to metadata_server\n");
+#endif
+                            break;
+                        }
+                    case(SY_UPLOAD):
+                        {
+                            int lws_err = libwebsocket_write(write_data->target_wsi, (void *)write_data->data, strlen(write_data->data), LWS_WRITE_TEXT);
+#ifdef DEBUG_SY            
+                            if(lws_err < 0)
+                                fprintf(stderr, "SYCLIENT: send SY_UPLOAD to metadata_server fail\n");
+                            else
+                                fprintf(stderr, "SYCLIENT: send SY_UPLOAD to metadata_server\n");
+#endif
+                            break;
+                        }
+                    case(SY_DOWNLOAD):
+                        {
+                            int lws_err = libwebsocket_write(write_data->target_wsi, (void *)write_data->data, strlen(write_data->data), LWS_WRITE_TEXT);
+#ifdef DEBUG_SY            
+                            if(lws_err < 0)
+                                fprintf(stderr, "SYCLIENT: send SY_DOWNLOAD to metadata_server fail\n");
+                            else
+                                fprintf(stderr, "SYCLIENT: send SY_DOWNLOAD to metadata_server\n");
 #endif
                             break;
                         }
@@ -140,21 +159,6 @@ static int callback_client(struct libwebsocket_context *context,
                     default:
                         break;
                 }
-               
-                if(sent_lws_JData != NULL){
-                    char *session_SData = json_dumps(sent_lws_JData, 0);
-                    int lws_err = libwebsocket_write(wsi, (void *)session_SData, strlen(session_SData), LWS_WRITE_TEXT);
-#ifdef DEBUG_SY            
-                    if(lws_err<0)
-                        fprintf(stderr, "SYCLIENT: LWS_WRITE failed\n");
-                    else 
-                        fprintf(stderr, "SYCLIENT: %s sent\n", session_SData);
-#endif
-                    // json_decref(sent_lws_JData);
-                    sent_lws_JData = NULL;
-                }
-                else
-                    fprintf(stderr, "SYCLIENT: sent_lws_JData is NULL\n");
                 break;
             }
         case LWS_CALLBACK_CLIENT_RECEIVE:
@@ -205,12 +209,26 @@ static int callback_client(struct libwebsocket_context *context,
                         break;
                     case FS_UPLOAD_READY:
                         fprintf(stderr,"SYCLIENT: receive FS_UPLOAD_READY\n");
-                        recvd_lws_JData = recvd_session_JData;
+                        /*TODO: the naming of "write_data" is not good in receive part*/
+                        /*TODO: need mutex? */
+                        memset(write_data->data, 0, WRITE_DATA_SIZE);
+                        strcpy(write_data->data, session_SData);
+                        write_data->target_wsi = NULL;
+                        write_data->type = FS_UPLOAD_READY;
+                        json_decref(recvd_session_JData);
+                        recvd_session_JData = NULL;
                         return -1;
                         break;
                     case FS_DOWNLOAD_READY:
                         fprintf(stderr,"SYCLIENT: receive FS_DOWNLOAD_READY\n");
-                        recvd_lws_JData = recvd_session_JData;
+                        /*TODO: the naming of "write_data" is not good in receive part*/
+                        /*TODO: need mutex? */
+                        memset(write_data->data, 0, WRITE_DATA_SIZE);
+                        strcpy(write_data->data, session_SData);
+                        write_data->target_wsi = NULL;
+                        write_data->type = FS_DOWNLOAD_READY;
+                        json_decref(recvd_session_JData);
+                        recvd_session_JData = NULL;
                         return -1;
                         break;
                     case SY_CLEANUP_OK:
@@ -414,6 +432,7 @@ uint8_t sy_connect(struct sy_session_t *sy_session, char *URI_code, char *local_
 
 }
 
+
 uint8_t sy_status(struct sy_session_t *sy_session, struct sy_diff_t *sy_session_diff)
 {
     const char *metadata_server_IP = METADATA_SERVER_IP;
@@ -533,15 +552,16 @@ uint8_t sy_status(struct sy_session_t *sy_session, struct sy_diff_t *sy_session_
     return SY_STATUS_OK;
 }
 
+
 uint8_t sy_upload(struct sy_session_t *sy_session, struct sy_diff_t *sy_session_diff)
 {
     /* connect to metadata server*/
     const char *metadata_server_IP = METADATA_SERVER_IP;
     uint16_t metadata_server_port = 7681;
     uint8_t metadata_type;
-    char *session_id, *URI_code;
     struct lwst_conn_t *metadata_conn;
-    metadata_conn = lwst_initial(metadata_server_IP, metadata_server_port, client_protocols, "client-protocol", NULL);
+    struct lwst_writedata_t *write_data = (struct lwst_writedata_t *)calloc(1, sizeof(struct lwst_writedata_t));
+    metadata_conn = lwst_initial(metadata_server_IP, metadata_server_port, client_protocols, "client-protocol", (void *)write_data);
     struct libwebsocket_context *context = metadata_conn->context;
     struct libwebsocket *wsi = metadata_conn->wsi;
     volatile uint8_t client_exit = 0;
@@ -562,37 +582,37 @@ uint8_t sy_upload(struct sy_session_t *sy_session, struct sy_diff_t *sy_session_
             (void *)upload_client_on_connect,STUN_IP, 0, 
             (void *)&rtcdc_info);
     client_SDP = rtcdc_generate_offer_sdp(offerer);
+    
     /* send request: upload files which the fileserver doesnt have */
     /* write SY_UPLOAD, SDP, candidate and session_id */
-    sent_lws_JData = json_object();
-    json_object_set_new(sent_lws_JData, "metadata_type", json_integer(SY_UPLOAD));
-    json_object_set_new(sent_lws_JData, "session_id", json_string(sy_session->session_id));
-    json_object_set_new(sent_lws_JData, "client_SDP", json_string(client_SDP));
-    json_object_set_new(sent_lws_JData, "client_candidates", json_string(rtcdc_info.local_candidates));
-    recvd_lws_JData = NULL;
+    json_t *sent_json = json_object();
+    json_object_set_new(sent_json, "metadata_type", json_integer(SY_UPLOAD));
+    json_object_set_new(sent_json, "session_id", json_string(sy_session->session_id));
+    json_object_set_new(sent_json, "client_SDP", json_string(client_SDP));
+    json_object_set_new(sent_json, "client_candidates", json_string(rtcdc_info.local_candidates));
+
+    char *sent_str = json_dumps(sent_json, 0);
+    strcpy(write_data->data, sent_str);
+    write_data->target_wsi = wsi;
+    write_data->type = SY_UPLOAD;
 
     usleep(100000);
     libwebsocket_callback_on_writable(context, wsi);
 
-    /* wait for SY_UPLOAD_READY fs SDP and candidate */
+    /* wait for FS_UPLOAD_READY fs SDP and candidate */
     /* TODO: here needs mutex */
-    json_t *sy_upload_json;
     while(1){
-        if(recvd_lws_JData != NULL){
-            json_unpack(recvd_lws_JData, "{s:i}", "metadata_type", &metadata_type);
-            if(metadata_type == FS_UPLOAD_READY){
-                /* TODO:sy_init success, keep or close the libwebsocket connection?*/
-                sy_upload_json = json_deep_copy(recvd_lws_JData); 
-                client_exit = 1;
-                break;
-            }
+        if(write_data->type == FS_UPLOAD_READY){
+            client_exit = 1;
+            break;
         }
         usleep(1000);
     }
     /* close the libwebsocket connection and then start rtcdc connection*/
     /* parse fs_SDP and fs_candidates */
-    char *fs_SDP = (char *)json_string_value(json_object_get(sy_upload_json, "fs_SDP"));
-    char *fs_candidates = (char *)json_string_value(json_object_get(sy_upload_json, "fs_candidates"));
+    json_t *recvd_json = json_loads(write_data->data, JSON_DECODE_ANY, NULL); 
+    char *fs_SDP = (char *)json_string_value(json_object_get(recvd_json, "fs_SDP"));
+    char *fs_candidates = (char *)json_string_value(json_object_get(recvd_json, "fs_candidates"));
 
     rtcdc_parse_offer_sdp(offerer, fs_SDP);
     parse_candidates(offerer, fs_candidates);
@@ -605,16 +625,19 @@ uint8_t sy_upload(struct sy_session_t *sy_session, struct sy_diff_t *sy_session_
     /* rtcdc connection */
     rtcdc_loop(offerer);
     /* TODO: when the rtcdc_loop terminate? */
+    
     uv_run(main_loop, UV_RUN_DEFAULT);
+    
     /* free memory */
+    free(sent_str);
+    sent_str = NULL;
     free(client_SDP);
-    free(recvd_lws_JData);
-    free(sent_lws_JData); 
-    recvd_lws_JData = NULL;
-    sent_lws_JData = NULL;
+    libwebsocket_context_destroy(context);
+    json_decref(recvd_json);
+    json_decref(sent_json); 
 
+    free(write_data);
     free(metadata_conn);
-    free(sent_lws_JData);
     /* return METADATAtype */
     return SY_UPLOAD_OK;
 }
@@ -626,9 +649,9 @@ uint8_t sy_download(struct sy_session_t *sy_session, struct sy_diff_t *sy_sessio
     const char *metadata_server_IP = METADATA_SERVER_IP;
     uint16_t metadata_server_port = 7681;
     uint8_t metadata_type;
-    char *session_id, *URI_code;
     struct lwst_conn_t *metadata_conn;
-    metadata_conn = lwst_initial(metadata_server_IP, metadata_server_port, client_protocols, "client-protocol", NULL);
+    struct lwst_writedata_t *write_data = (struct lwst_writedata_t *)calloc(1, sizeof(struct lwst_writedata_t));
+    metadata_conn = lwst_initial(metadata_server_IP, metadata_server_port, client_protocols, "client-protocol", (void *)write_data);
     struct libwebsocket_context *context = metadata_conn->context;
     struct libwebsocket *wsi = metadata_conn->wsi;
     volatile uint8_t client_exit = 0;
@@ -651,35 +674,34 @@ uint8_t sy_download(struct sy_session_t *sy_session, struct sy_diff_t *sy_sessio
     client_SDP = rtcdc_generate_offer_sdp(offerer);
     /* send request: download files which the client doesnt have */
     /* write SY_DOWNLOAD, SDP, candidate and session_id */
-    sent_lws_JData = json_object();
-    json_object_set_new(sent_lws_JData, "metadata_type", json_integer(SY_DOWNLOAD));
-    json_object_set_new(sent_lws_JData, "session_id", json_string(sy_session->session_id));
-    json_object_set_new(sent_lws_JData, "client_SDP", json_string(client_SDP));
-    json_object_set_new(sent_lws_JData, "client_candidates", json_string(rtcdc_info.local_candidates));
-    recvd_lws_JData = NULL;
+    json_t *sent_json = json_object();
+    json_object_set_new(sent_json, "metadata_type", json_integer(SY_DOWNLOAD));
+    json_object_set_new(sent_json, "session_id", json_string(sy_session->session_id));
+    json_object_set_new(sent_json, "client_SDP", json_string(client_SDP));
+    json_object_set_new(sent_json, "client_candidates", json_string(rtcdc_info.local_candidates));
+    
+    char *sent_str = json_dumps(sent_json, 0);
+    strcpy(write_data->data, sent_str);
+    write_data->target_wsi = wsi;
+    write_data->type = SY_DOWNLOAD;
 
     usleep(100000);
     libwebsocket_callback_on_writable(context, wsi);
 
-    /* wait for SY_DOWNLOAD_READY fs SDP and candidate */
+    /* wait for FS_DOWNLOAD_READY fs SDP and candidate */
     /* TODO: here needs mutex */
-    json_t *sy_download_json;
     while(1){
-        if(recvd_lws_JData != NULL){
-            json_unpack(recvd_lws_JData, "{s:i}", "metadata_type", &metadata_type);
-            if(metadata_type == FS_DOWNLOAD_READY){
-                /* TODO:sy_init success, keep or close the libwebsocket connection?*/
-                sy_download_json = json_deep_copy(recvd_lws_JData); 
-                client_exit = 1;
-                break;
-            }
+        if(write_data->type == FS_DOWNLOAD_READY){
+            client_exit = 1;
+            break;
         }
         usleep(1000);
     }
     /* close the libwebsocket connection and then start rtcdc connection*/
     /* parse fs_SDP and fs_candidates */
-    char *fs_SDP = (char *)json_string_value(json_object_get(sy_download_json, "fs_SDP"));
-    char *fs_candidates = (char *)json_string_value(json_object_get(sy_download_json, "fs_candidates"));
+    json_t *recvd_json = json_loads((const char *)write_data->data, JSON_DECODE_ANY, NULL);
+    char *fs_SDP = (char *)json_string_value(json_object_get(recvd_json, "fs_SDP"));
+    char *fs_candidates = (char *)json_string_value(json_object_get(recvd_json, "fs_candidates"));
 
     rtcdc_parse_offer_sdp(offerer, fs_SDP);
     parse_candidates(offerer, fs_candidates);
@@ -694,15 +716,17 @@ uint8_t sy_download(struct sy_session_t *sy_session, struct sy_diff_t *sy_sessio
     /* TODO: when the rtcdc_loop terminate? */
     uv_run(main_loop, UV_RUN_DEFAULT);
     /* free memory */
+    free(sent_str);
+    sent_str = NULL;
+    libwebsocket_context_destroy(context);
+    free(write_data);
+    write_data = NULL;
+
     free(client_SDP);
-    json_decref(sy_download_json);
-    json_decref(recvd_lws_JData);
-    json_decref(sent_lws_JData); 
-    recvd_lws_JData = NULL;
-    sent_lws_JData = NULL;
+    json_decref(recvd_json);
+    json_decref(sent_json);
 
     free(metadata_conn);
-    free(sent_lws_JData);
     /* return METADATAtype */
     return SY_DOWNLOAD_OK;
 }
@@ -821,6 +845,8 @@ int main(int argc, char *argv[]){
         printf("filename:%s, dirty:%d\n", (sy_session_diff->files_diff[i]).filename, (sy_session_diff->files_diff[i]).dirty);
     }
     printf("\n");
+
+    sy_download(sy_session, sy_session_diff);
 
     sy_cleanup(sy_session, sy_session_diff);
     
