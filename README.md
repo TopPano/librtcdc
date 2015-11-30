@@ -2,7 +2,6 @@
 
 #### Features
 
-* hi
 * Tiny <2k LOC, easy to understand/bind/extend
 * Talks with each other, Chrome(39/40), Firefox?, Opera?
 * 'Official' Python binding
